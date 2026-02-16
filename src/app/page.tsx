@@ -6,6 +6,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
   PaymentElement,
+  ExpressCheckoutElement,
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
@@ -55,8 +56,35 @@ function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosque
     }
   };
 
+  const handleExpressConfirm = async (event: { preventDefault: () => void }) => {
+    // Le composant gère lui-même la confirmation, mais on peut ajouter une logique extra si besoin
+    if (!stripe || !elements) return;
+    
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/?success=true&mosqueName=${encodeURIComponent(mosqueName)}`,
+      },
+    });
+
+    if (error) {
+      setErrorMessage(error.message || 'Une erreur est survenue.');
+    }
+  };
+
+
   return (
     <form onSubmit={handleSubmit} className="payment-form">
+      {/* Bouton Apple Pay / Google Pay explicite */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <ExpressCheckoutElement onConfirm={handleExpressConfirm as any} />
+      </div>
+
+      <div style={{ position: 'relative', margin: '2rem 0', textAlign: 'center' }}>
+        <div style={{ position: 'absolute', top: '50%', width: '100%', height: '1px', background: 'rgba(255,255,255,0.1)', zIndex: 0 }}></div>
+        <span style={{ position: 'relative', background: '#1f293700', padding: '0 1rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', zIndex: 1 }}>ou par carte</span>
+      </div>
+
       <div style={{ marginBottom: '1.5rem' }}>
         <PaymentElement />
       </div>
