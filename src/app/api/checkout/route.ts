@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 // Initialisation paresseuse de Stripe
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiVersion: '2025-01-27-acacia' as any,
+  apiVersion: '2024-12-18.acacia' as any,
 });
 
 export async function POST(req: Request) {
