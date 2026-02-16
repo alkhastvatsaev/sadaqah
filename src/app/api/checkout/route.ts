@@ -13,10 +13,8 @@ export async function POST(req: Request) {
   try {
     const { amount, mosqueName } = await req.json();
 
-    // Si la clé Stripe est manquante (cas du build Vercel ou test), on simule un succès
-    if (!process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET_KEY === 'sk_test_placeholder') {
-      console.log('Mode simulation: Clé Stripe manquante');
-      return NextResponse.json({ id: 'sim_123' });
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('La clé Stripe n\'est pas configurée dans les variables d\'environnement.');
     }
 
     const session = await (getStripe().checkout.sessions.create as any)({
@@ -46,7 +44,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ id: session.id });
   } catch (err: unknown) {
     console.error('Stripe Error:', err);
-    // On simule un succès même en cas d'erreur pour ne pas bloquer le build/démo
-    return NextResponse.json({ id: 'sim_fallback' });
+    const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue';
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

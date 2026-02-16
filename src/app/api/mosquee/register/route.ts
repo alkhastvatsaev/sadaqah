@@ -11,10 +11,8 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { mosqueName, city, email, phone } = body;
 
-    // Si la clé Resend est manquante, on simule un succès
-    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.includes('placeholder')) {
-      console.log('Mode simulation: Clé Resend manquante');
-      return NextResponse.json({ success: true });
+    if (!process.env.RESEND_API_KEY) {
+      throw new Error('La clé Resend n\'est pas configurée.');
     }
 
     // Envoi de l'e-mail à l'administrateur
@@ -36,7 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error('Erreur inscription mail:', error);
-    // On retourne quand même un succès pour la démo
-    return NextResponse.json({ success: true });
+    const errorMessage = error instanceof Error ? error.message : 'Détails non disponibles';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }
