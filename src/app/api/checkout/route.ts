@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
+export const dynamic = 'force-dynamic';
+
 // Initialisation paresseuse de Stripe
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
