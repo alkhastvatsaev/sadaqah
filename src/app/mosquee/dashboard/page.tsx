@@ -86,7 +86,7 @@ export default function MosqueDashboard() {
       </div>
 
       <footer style={{ marginTop: '4rem', textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '0.8rem' }}>
-        Besoin d'aide ? Contactez le support technique au 01 00 00 00 00
+        Besoin d&apos;aide ? Contactez le support technique au 01 00 00 00 00
       </footer>
     </div>
   );

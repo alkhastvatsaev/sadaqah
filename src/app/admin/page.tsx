@@ -35,7 +35,7 @@ export default function AdminPortal() {
           <p style={{ color: 'rgba(255,255,255,0.5)' }}>Vue globale du système et gestion des mosquées</p>
         </div>
         <Link href="/" className="mosque-portal-link" style={{ position: 'relative', top: 0, right: 0 }}>
-          Quitter l'Admin
+          Quitter l&apos;Admin
         </Link>
       </header>
 

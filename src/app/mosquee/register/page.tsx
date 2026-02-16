@@ -43,7 +43,7 @@ export default function MosqueRegister() {
             Barakallahu feekoum. Les informations ont été envoyées à <strong>alkhastvatsaev@gmail.com</strong>. Nous vous contacterons sous 24h.
           </p>
           <Link href="/" className="card-button" style={{ width: '100%', borderColor: 'var(--primary)', color: 'var(--primary)', textDecoration: 'none' }}>
-            Retour à l'accueil
+            Retour à l&apos;accueil
           </Link>
         </div>
       </main>
@@ -58,7 +58,7 @@ export default function MosqueRegister() {
 
       <div className="glass-card">
         <h1 className="title">Ma Mosquée</h1>
-        <p className="subtitle">L'inscription sera notifiée sur alkhastvatsaev@gmail.com pour validation.</p>
+        <p className="subtitle">L&apos;inscription sera notifiée sur alkhastvatsaev@gmail.com pour validation.</p>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -115,7 +115,7 @@ export default function MosqueRegister() {
         </form>
 
         <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
-          Une vérification des documents (SIRET/Journal Officiel) sera demandée par l'administrateur.
+          Une vérification des documents (SIRET/Journal Officiel) sera demandée par l&apos;administrateur.
         </p>
       </div>
     </main>

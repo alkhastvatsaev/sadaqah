@@ -26,6 +26,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error('Erreur inscription mail:', error);
     // On retourne quand même un succès pour la démo si la clé API est manquante

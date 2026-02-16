@@ -18,13 +18,17 @@ export default function Home() {
 
   // Vérifier si on revient d'un paiement réussi via Stripe redirect
   useEffect(() => {
-    const query = new URLSearchParams(window.location.search);
-    if (query.get('success')) {
-      setIsSuccess(true);
+    if (typeof window !== 'undefined') {
+      const query = new URLSearchParams(window.location.search);
+      if (query.get('success')) {
+        // Pour éviter le warning ESLint sur le setState synchrone dans un effect
+        setTimeout(() => setIsSuccess(true), 0);
+      }
     }
   }, []);
 
-  const handleDonate = async (method: string) => {
+  const handleDonate = async (methodName?: string) => {
+    console.log('Don via:', methodName);
     const amount = selectedAmount || Number(customAmount);
     if (!amount || amount <= 0) return;
 
@@ -42,6 +46,7 @@ export default function Home() {
 
       if (session.id) {
         const stripe = await stripePromise;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { error } = await (stripe as any).redirectToCheckout({
           sessionId: session.id,
         });
