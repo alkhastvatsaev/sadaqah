@@ -5,7 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import Link from 'next/link';
 
 // Remplacer par votre clé publique Stripe
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string);
 
 const AMOUNTS = [5, 10, 20, 50];
 
@@ -193,11 +193,17 @@ export default function Home() {
       <footer style={{ 
         position: 'absolute', 
         bottom: '2rem', 
-        color: 'rgba(255,255,255,0.2)',
+        color: 'rgba(255,255,255,0.3)',
         fontSize: '0.75rem',
-        textAlign: 'center'
+        textAlign: 'center',
+        display: 'flex',
+        gap: '1.5rem',
+        alignItems: 'center'
       }}>
-        © 2026 Mosque Connect - Facilitant la générosité
+        <span>© 2026 Sadaqah App</span>
+        <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Mentions légales</a>
+        <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>CGV</a>
+        <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Confidentialité</a>
       </footer>
     </main>
   );
