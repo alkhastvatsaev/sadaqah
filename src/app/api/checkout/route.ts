@@ -18,9 +18,7 @@ export async function POST(req: Request) {
     }
 
     const session = await (getStripe().checkout.sessions.create as any)({
-      automatic_payment_methods: { 
-        enabled: true,
-      },
+      payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
