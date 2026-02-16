@@ -10,7 +10,9 @@ export async function POST(req: Request) {
     const { amount, mosqueName } = await req.json();
 
     const session = await (stripe.checkout.sessions.create as any)({
-      payment_method_types: ['card'],
+      automatic_payment_methods: { 
+        enabled: true,
+      },
       line_items: [
         {
           price_data: {
