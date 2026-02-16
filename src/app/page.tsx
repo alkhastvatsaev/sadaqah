@@ -2,75 +2,164 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { loadStripe } from '@stripe/stripe-js';
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from '@stripe/react-stripe-js';
+
+// Load Stripe outside of component to avoid recreating it
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string);
 
 // Predefined donation amounts
 const PRESET_AMOUNTS = [5, 10, 20, 50, 100, 200];
 
-export default function Home() {
-  // State management
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
-  const [customAmount, setCustomAmount] = useState<string>('');
-  const [mosqueName, setMosqueName] = useState('Grande Mosquée');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// Internal component for the form inside Elements provider
+function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosqueName: string, onCancel: () => void }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Derived state
-  const currentAmount = selectedAmount || (customAmount ? Number(customAmount) : 0);
-  const isValidAmount = currentAmount > 0;
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
 
-  // Handle donation flow
-  const handleDonate = async () => {
-    if (!isValidAmount) return;
-    
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: currentAmount,
-          mosqueName: mosqueName.trim() || 'Mosquée',
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Une erreur est survenue lors de la préparation du don.');
-      }
-
-      if (data.url) {
-        // Server-side redirect is reliable and secure
-        window.location.href = data.url;
-      } else {
-        throw new Error('Erreur de configuration Stripe (URL manquante).');
-      }
-
-    } catch (err) {
-      console.error('Donation error:', err);
-      setError(err instanceof Error ? err.message : 'Une erreur inattendue est survenue.');
-      setIsProcessing(false);
+    if (!stripe || !elements) {
+      return;
     }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/?success=true&mosqueName=${encodeURIComponent(mosqueName)}`,
+      },
+    });
+
+    if (error) {
+      setErrorMessage(error.message || 'Une erreur est survenue.');
+      setIsSubmitting(false);
+    }
+    // If success, Stripe redirects automatically
   };
 
   return (
-    <main className="main-container">
-      {/* Mosque Portal Link */}
-      <Link 
-        href="/mosquee/register"
-        className="mosque-portal-link"
+    <form onSubmit={handleSubmit} className="payment-form">
+      <div style={{ marginBottom: '1.5rem' }}>
+        <PaymentElement />
+      </div>
+      
+      {errorMessage && (
+        <div style={{ color: '#ef4444', fontSize: '0.9rem', marginBottom: '1rem', padding: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px' }}>
+          {errorMessage}
+        </div>
+      )}
+
+      <button 
+        type="submit" 
+        disabled={!stripe || isSubmitting}
+        className="donate-button"
+        style={{ marginTop: 0 }}
       >
+        {isSubmitting ? 'Traitement...' : `Payer ${amount}€`}
+      </button>
+      
+      <button 
+        type="button" 
+        onClick={onCancel}
+        className="card-button"
+        style={{ marginTop: '0.75rem', width: '100%', justifyContent: 'center', border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.6)' }}
+      >
+        Annuler
+      </button>
+    </form>
+  );
+}
+
+export default function Home() {
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const [customAmount, setCustomAmount] = useState<string>('');
+  const [mosqueName, setMosqueName] = useState('Grande Mosquée');
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [isLoadingSecret, setIsLoadingSecret] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  const currentAmount = selectedAmount || (customAmount ? Number(customAmount) : 0);
+  const isValidAmount = currentAmount > 0;
+
+  // Check for success redirect
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const query = new URLSearchParams(window.location.search);
+      if (query.get('success')) {
+        setIsSuccess(true);
+        const name = query.get('mosqueName');
+        if (name) setMosqueName(decodeURIComponent(name));
+      }
+    }
+  }, []);
+
+  const handleStartPayment = async () => {
+    if (!isValidAmount) return;
+    
+    setIsLoadingSecret(true);
+    try {
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: currentAmount, mosqueName }),
+      });
+      
+      const data = await res.json();
+      if (data.clientSecret) {
+        setClientSecret(data.clientSecret);
+      } else {
+        alert('Erreur lors de l\'initialisation du paiement');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Une erreur est survenue');
+    } finally {
+      setIsLoadingSecret(false);
+    }
+  };
+
+  if (isSuccess) {
+    return (
+      <main className="main-container">
+        <div className="glass-card success-container">
+          <div className="success-icon">✓</div>
+          <h1 className="barakallah">Barakallahu feek</h1>
+          <p className="subtitle">
+            Merci pour votre don à la <strong>{mosqueName}</strong>. Que Dieu vous récompense grandement.
+          </p>
+          <button 
+            className="card-button" 
+            style={{ marginTop: '1rem', width: '100%', borderColor: 'var(--primary)', color: 'var(--primary)' }}
+            onClick={() => {
+              window.location.href = '/'; 
+            }}
+          >
+            Faire un autre don
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="main-container">
+      <Link href="/mosquee/register" className="mosque-portal-link">
         Vous êtes une mosquée ?
       </Link>
 
-      <div className="glass-card">
-        {/* Header Section */}
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--primary)' }}>
+      <div className="glass-card" style={{ maxWidth: '480px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--primary)' }}>
             Sadaqah App
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
@@ -78,130 +167,97 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Mosque Name Input */}
-        <div className="form-group">
-          <input 
-            type="text" 
-            value={mosqueName}
-            onChange={(e) => setMosqueName(e.target.value)}
-            className="title-input"
-            placeholder="Nom de la mosquée"
-          />
-          <p className="subtitle">Soutenez votre communauté.</p>
-        </div>
-
-        {/* Amount Selection Grid */}
-        <div className="amount-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          {PRESET_AMOUNTS.map((amount) => (
-            <button
-              key={amount}
-              className={`amount-button ${selectedAmount === amount ? 'selected' : ''}`}
-              onClick={() => {
-                setSelectedAmount(amount);
-                setCustomAmount('');
-                setError(null);
-              }}
-            >
-              {amount}€
-            </button>
-          ))}
-        </div>
-
-        {/* Custom Amount Input */}
-        <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
-          <input
-            type="number"
-            placeholder="Autre montant..."
-            className="custom-amount-input"
-            style={{ marginBottom: 0 }}
-            value={customAmount}
-            onChange={(e) => {
-              setCustomAmount(e.target.value);
-              setSelectedAmount(null);
-              setError(null);
-            }}
-          />
-          <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)' }}>EUR</span>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div style={{ 
-            backgroundColor: 'rgba(220, 38, 38, 0.1)', 
-            border: '1px solid rgba(220, 38, 38, 0.5)', 
-            color: '#f87171', 
-            padding: '0.75rem', 
-            borderRadius: '12px',
-            marginBottom: '1rem',
-            fontSize: '0.9rem',
-            textAlign: 'center'
-          }}>
-            {error}
+        {/* If we have a client secret, show the payment form directly */}
+        {clientSecret ? (
+          <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
+             <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Montant du don</p>
+                <p style={{ fontSize: '2rem', fontWeight: 'bold', color: 'white' }}>{currentAmount}€</p>
+             </div>
+             <Elements 
+                stripe={stripePromise} 
+                options={{ 
+                  clientSecret, 
+                  appearance: { 
+                    theme: 'night', 
+                    variables: { colorPrimary: '#10b981', colorBackground: '#1f2937', colorText: '#ffffff' } 
+                  } 
+                }}
+              >
+              <CheckoutForm 
+                amount={currentAmount} 
+                mosqueName={mosqueName} 
+                onCancel={() => setClientSecret(null)} 
+              />
+            </Elements>
           </div>
+        ) : (
+          /* Selection Step */
+          <>
+            <div className="form-group">
+              <input 
+                type="text" 
+                value={mosqueName}
+                onChange={(e) => setMosqueName(e.target.value)}
+                className="title-input"
+                placeholder="Nom de la mosquée"
+              />
+              <p className="subtitle">Soutenez votre communauté.</p>
+            </div>
+
+            <div className="amount-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+              {PRESET_AMOUNTS.map((amount) => (
+                <button
+                  key={amount}
+                  className={`amount-button ${selectedAmount === amount ? 'selected' : ''}`}
+                  onClick={() => {
+                    setSelectedAmount(amount);
+                    setCustomAmount('');
+                  }}
+                >
+                  {amount}€
+                </button>
+              ))}
+            </div>
+
+            <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
+              <input
+                type="number"
+                placeholder="Autre montant..."
+                className="custom-amount-input"
+                style={{ marginBottom: 0 }}
+                value={customAmount}
+                onChange={(e) => {
+                  setCustomAmount(e.target.value);
+                  setSelectedAmount(null);
+                }}
+              />
+              <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)' }}>EUR</span>
+            </div>
+
+            <button 
+              className="donate-button"
+              disabled={!isValidAmount || isLoadingSecret}
+              onClick={handleStartPayment}
+            >
+              {isLoadingSecret ? 'Chargement...' : 'Continuer vers le paiement'}
+            </button>
+          </>
         )}
 
-        {/* Payment Actions */}
-        <div className="payment-methods">
-          {/* Quick Pay Buttons (Visual only, they all trigger standard checkout) */}
-          <div className="express-pay">
-            <button 
-              className="apple-pay-button"
-              disabled={!isValidAmount || isProcessing}
-              onClick={handleDonate}
-              title="Payer avec Apple Pay"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M11.67 8.35c.01-1.67 1.37-2.43 1.43-2.47-.79-1.13-2-1.28-2.45-1.3-.98-.1-2 .57-2.5.57-.49 0-1.39-.56-2.22-.55-1.09.02-2.1.63-2.66 1.6-.71 1.25-.54 3.09.15 4.09.34.48.74.83 1.13.84.38.01.53-.22.99-.22.45 0 .61.22 1.01.21s.75-.41 1.09-.89c.39-.55.55-1.07.56-1.1-.01 0-1.12-.42-1.13-1.68zm-.89-5.41c.44-.52.73-1.25.65-1.98-.64.03-1.42.42-1.89.96-.41.48-.77 1.23-.67 1.94.72.05 1.44-.37 1.91-.92z"/>
-              </svg>
-              Pay
-            </button>
-            <button 
-              className="google-pay-button" 
-              disabled={!isValidAmount || isProcessing}
-              onClick={handleDonate}
-              title="Payer avec Google Pay"
-            >
-              <svg width="34" height="16" viewBox="0 0 42 16" fill="currentColor">
-                <path d="M6.46 6.84v2.07h4.94c-.2 1.13-1.33 3.32-4.94 3.32-2.98 0-5.41-2.45-5.41-5.47s2.43-5.47 5.41-5.47c1.69 0 2.82.72 3.47 1.34l1.63-1.63C10.51.05 8.7 0 6.46 0 2.92 0 0 2.97 0 6.58S2.92 13.16 6.46 13.16c3.73 0 6.2-2.7 6.2-6.38 0-.43-.05-.76-.11-1.08H6.46z"/>
-                <path d="M16.94 4.54c-2.1 0-3.86 1.63-3.86 3.86s1.76 3.86 3.86 3.86 3.86-1.63 3.86-3.86-1.76-3.86-3.86-3.86zm0 6.25c-1.32 0-2.46-1.05-2.46-2.39s1.14-2.39 2.46-2.39 2.46 1.05 2.46 2.39-1.14 2.39-2.46 2.39zM25.43 4.54c-2.1 0-3.86 1.63-3.86 3.86s1.76 3.86 3.86 3.86 3.86-1.63 3.86-3.86-1.77-3.86-3.86-3.86zm0 6.25c-1.32 0-2.46-1.05-2.46-2.39s1.14-2.39 2.46-2.39 2.46 1.05 2.46 2.39-1.14 2.39-2.46 2.39z"/>
-              </svg>
-            </button>
-          </div>
-
-          <div className="separator">ou</div>
-
-          <button 
-            className="donate-button"
-            disabled={!isValidAmount || isProcessing}
-            onClick={handleDonate}
-            style={{ marginTop: 0 }}
-          >
-            {isProcessing ? (
-              <span>Redirection sécurisée...</span>
-            ) : (
-              <>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
-                  <line x1="1" y1="10" x2="23" y2="10"></line>
-                </svg>
-                Donner par Carte Bancaire
-              </>
-            )}
-          </button>
-        </div>
-
         {/* Security Footer */}
-        <div style={{ textAlign: 'center', marginTop: '1.5rem', opacity: 0.5, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
-          Paiement 100% sécurisé via Stripe
-        </div>
+        {!clientSecret && (
+           <div style={{ textAlign: 'center', marginTop: '1.5rem', opacity: 0.5, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            Paiement 100% sécurisé via Stripe
+          </div>
+        )}
       </div>
 
-      {/* Legal Footer for Stripe Compliance */}
-      <footer style={{ 
+       <footer style={{ 
         marginTop: '3rem',
         color: 'rgba(255,255,255,0.3)',
         fontSize: '0.75rem',
