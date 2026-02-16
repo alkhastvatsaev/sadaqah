@@ -38,10 +38,9 @@ export async function POST(req: Request) {
         mosque_name: mosqueName,
       },
       success_url: `${req.headers.get('origin')}/?success=true`,
-      cancel_url: `${req.headers.get('origin')}/`,
     });
-
-    return NextResponse.json({ id: session.id });
+    
+    return NextResponse.json({ id: session.id, url: session.url });
   } catch (err: unknown) {
     console.error('Stripe Error:', err);
     const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue';

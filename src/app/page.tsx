@@ -45,13 +45,16 @@ export default function Home() {
       const session = await response.json();
 
       if (session.id) {
-        const stripe = await stripePromise;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (stripe as any).redirectToCheckout({
-          sessionId: session.id,
-        });
-
-        if (error) console.error(error);
+        // Redirection directe vers l'URL de paiement Stripe
+        // Le SDK client n'est pas nécessaire si on a l'URL de la session
+        if (session.url) {
+          window.location.href = session.url;
+        } else {
+          // Fallback legacy si l'URL n'est pas retournée directement
+          const stripe = await stripePromise;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (stripe as any).redirectToCheckout({ sessionId: session.id });
+        }
       } else {
         // Fallback simulation si pas de clé Stripe configurée
         setTimeout(() => {
