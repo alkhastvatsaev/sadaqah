@@ -14,7 +14,16 @@ import {
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string);
 
 // Predefined donation amounts
-const PRESET_AMOUNTS = [5, 10, 20, 50, 100, 200];
+const PRESET_AMOUNTS = [1, 2, 5, 10];
+
+// Independent background component to avoid hydration issues
+function BackgroundCalligraphy() {
+  return (
+    <div className="background-calligraphy">
+      مَّثَلُ الَّذِينَ يُنفِقُونَ أَمْوَالَهُمْ فِي سَبِيلِ اللَّهِ كَمَثَلِ حَبَّةٍ أَنبَتَتْ سَبْعَ سَنَابِلَ
+    </div>
+  );
+}
 
 // Internal component for the form inside Elements provider
 function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosqueName: string, onCancel: () => void }) {
@@ -44,7 +53,6 @@ function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosque
       setErrorMessage(error.message || 'Une erreur est survenue.');
       setIsSubmitting(false);
     }
-    // If success, Stripe redirects automatically
   };
 
   return (
@@ -91,7 +99,6 @@ export default function Home() {
   const currentAmount = selectedAmount || (customAmount ? Number(customAmount) : 0);
   const isValidAmount = currentAmount > 0;
 
-  // Check for success redirect
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const query = new URLSearchParams(window.location.search);
@@ -131,6 +138,7 @@ export default function Home() {
   if (isSuccess) {
     return (
       <main className="main-container">
+        <BackgroundCalligraphy />
         <div className="glass-card success-container">
           <div className="success-icon">✓</div>
           <h1 className="barakallah">Barakallahu feek</h1>
@@ -153,18 +161,17 @@ export default function Home() {
 
   return (
     <main className="main-container">
+      <BackgroundCalligraphy />
+      
       <Link href="/mosquee/register" className="mosque-portal-link">
         Vous êtes une mosquée ?
       </Link>
 
-      <div className="glass-card" style={{ maxWidth: '480px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--primary)' }}>
+      <div className="glass-card" style={{ maxWidth: '440px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <h1 className="app-logo">
             Sadaqah App
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.9rem' }}>
-            La plateforme de don sécurisée et transparente.
-          </p>
         </div>
 
         {/* If we have a client secret, show the payment form directly */}
@@ -205,7 +212,7 @@ export default function Home() {
               <p className="subtitle">Soutenez votre communauté.</p>
             </div>
 
-            <div className="amount-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            <div className="amount-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
               {PRESET_AMOUNTS.map((amount) => (
                 <button
                   key={amount}
@@ -220,27 +227,12 @@ export default function Home() {
               ))}
             </div>
 
-            <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
-              <input
-                type="number"
-                placeholder="Autre montant..."
-                className="custom-amount-input"
-                style={{ marginBottom: 0 }}
-                value={customAmount}
-                onChange={(e) => {
-                  setCustomAmount(e.target.value);
-                  setSelectedAmount(null);
-                }}
-              />
-              <span style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)' }}>EUR</span>
-            </div>
-
             <button 
               className="donate-button"
               disabled={!isValidAmount || isLoadingSecret}
               onClick={handleStartPayment}
             >
-              {isLoadingSecret ? 'Chargement...' : 'Continuer vers le paiement'}
+              {isLoadingSecret ? 'Chargement...' : 'Faire un don'}
             </button>
           </>
         )}

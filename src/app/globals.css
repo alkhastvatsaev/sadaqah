@@ -456,15 +456,41 @@ body {
   border-radius: 50%;
 }
 
-.status-online { background: #10b981; box-shadow: 0 0 10px #10b981; }
+.background-calligraphy {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Amiri', serif; /* Or a standard serif if Amiri isn't loaded, but we can try to use a system font that looks ok for Arabic */
+  font-size: 20rem; /* Very large */
+  color: rgba(16, 185, 129, 0.03); /* Primary color but very faint */
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 0;
+  text-align: center;
+  line-height: 1.2;
+  width: 100%;
+  overflow: hidden;
+  font-weight: 700;
+}
 
-.log-scroll {
-  max-height: 300px;
-  overflow-y: auto;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 0.8rem;
-  background: #000;
-  padding: 1rem;
-  border-radius: 12px;
-  color: #0f0;
+.app-logo {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  background: linear-gradient(135deg, #fff 0%, #10b981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.glass-card {
+  /* Existing styles... */
+  position: relative;
+  z-index: 1; /* Ensure it sits above the background */
+  background: rgba(255, 255, 255, 0.03); /* Make it slightly more transparent to see the bg blur */
+  backdrop-filter: blur(20px); /* Stronger blur */
+  -webkit-backdrop-filter: blur(20px);
 }
