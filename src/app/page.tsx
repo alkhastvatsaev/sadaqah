@@ -42,7 +42,7 @@ export default function Home() {
 
       if (session.id) {
         const stripe = await stripePromise;
-        const { error } = await stripe!.redirectToCheckout({
+        const { error } = await (stripe as any).redirectToCheckout({
           sessionId: session.id,
         });
 
