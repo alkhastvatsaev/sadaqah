@@ -22,9 +22,7 @@ export async function POST(req: Request) {
         mosque_name: mosqueName,
       },
       description: `Don pour ${mosqueName || 'la mosquée'}`,
-      automatic_payment_methods: {
-        enabled: true,
-      },
+      payment_method_types: ['card'],
     });
 
     return NextResponse.json({
