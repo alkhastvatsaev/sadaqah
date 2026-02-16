@@ -7,23 +7,26 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 
 export async function POST(req: Request) {
   try {
-    const { amount } = await req.json();
+    const { amount, mosqueName } = await req.json();
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card', 'apple_pay', 'google_pay'],
+    const session = await (stripe.checkout.sessions.create as any)({
+      payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
             currency: 'eur',
             product_data: {
-              name: 'Sadaqah (Don pour la mosquée)',
+              name: `Don pour ${mosqueName || 'la mosquée'}`,
             },
-            unit_amount: amount * 100, // Stripe uses cents
+            unit_amount: Math.round(amount * 100), // Stripe uses cents
           },
           quantity: 1,
         },
       ],
       mode: 'payment',
+      metadata: {
+        mosque_name: mosqueName,
+      },
       success_url: `${req.headers.get('origin')}/?success=true`,
       cancel_url: `${req.headers.get('origin')}/`,
     });
