@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-// Initialisation de Resend (nécessite une clé API dans .env.local)
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialisation paresseuse de Resend
+const getResend = () => new Resend(process.env.RESEND_API_KEY || 're_placeholder');
 
 export async function POST(req: Request) {
   try {
@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     const { mosqueName, city, email, phone } = body;
 
     // Envoi de l'e-mail à l'administrateur
-    await resend.emails.send({
+    await getResend().emails.send({
       from: 'Mosque Connect <onboarding@resend.dev>',
       to: 'alkhastvatsaev@gmail.com',
       subject: `Nouvelle inscription : ${mosqueName}`,

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+// Initialisation paresseuse de Stripe
+const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apiVersion: '2025-01-27-acacia' as any,
 });
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const { amount, mosqueName } = await req.json();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const session = await (stripe.checkout.sessions.create as any)({
+    const session = await (getStripe().checkout.sessions.create as any)({
       automatic_payment_methods: { 
         enabled: true,
       },
