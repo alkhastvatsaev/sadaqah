@@ -39,7 +39,7 @@ export async function POST(req: Request) {
         covered_fees: coverFees ? "yes" : "no",
       },
       description: `Don pour ${mosqueName || "la mosquée"}`,
-      payment_method_types: ["card"],
+      automatic_payment_methods: { enabled: true },
     });
 
     return NextResponse.json({
