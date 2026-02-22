@@ -1,5 +1,5 @@
 {
-  "name": "mosque-donate",
+  "name": "sadaqah-mosque",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -14,6 +14,7 @@
     "next": "15.1.9",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "react-qr-code": "^2.0.18",
     "resend": "^6.9.2",
     "stripe": "^20.3.1"
   },

@@ -29,26 +29,40 @@ body {
 
 .main-container {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 2rem;
+  justify-content: flex-start;
+  padding: 3rem 1rem calc(4rem + env(safe-area-inset-bottom));
+  padding-top: calc(2rem + env(safe-area-inset-top));
   background: radial-gradient(circle at top right, #0a1f10 0%, #040702 100%);
   position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+@media (min-height: 700px) {
+  .main-container {
+    justify-content: center; /* Center only if there is enough vertical space */
+  }
 }
 
 .glass-card {
   background: var(--surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--surface-border);
-  border-radius: 24px;
-  padding: 2.5rem;
-  width: 100%;
-  max-width: 440px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  animation: fadeIn 0.8s ease-out;
+  border-radius: 36px;
+  padding: 2.5rem 2rem;
+  width: 94%;
+  max-width: 420px;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+  animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 @keyframes fadeIn {
@@ -89,64 +103,118 @@ body {
   font-weight: 300;
 }
 
-.amount-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+.wheel-picker-container {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+  margin: 1.5rem 0;
 }
 
-.amount-button {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--surface-border);
-  border-radius: 16px;
-  padding: 1.25rem;
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.apple-search-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 1.1rem 1.5rem;
   color: white;
-  font-family: inherit;
-  font-size: 1.25rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.3s ease;
+  outline: none;
+  box-shadow: inset 0 2px 8px rgba(0,0,0,0.15);
 }
-
-.amount-button:hover {
+.apple-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+.apple-search-input:focus {
   background: rgba(255, 255, 255, 0.08);
-  border-color: var(--primary);
-  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
-.amount-button.selected {
-  background: var(--primary);
-  border-color: var(--primary);
-  box-shadow: 0 0 20px var(--primary-glow);
+.ios-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 48px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  position: relative;
+  outline: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  flex-shrink: 0;
+  margin: 0;
+}
+.ios-toggle:checked {
+  background-color: var(--primary);
+}
+.ios-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  background-color: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.ios-toggle:checked::after {
+  transform: translateX(20px);
 }
 
 .donate-button {
   width: 100%;
-  background: var(--primary);
-  color: #000;
-  border: none;
-  border-radius: 16px;
-  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.9) 0%, rgba(5, 150, 105, 0.8) 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 28px;
+  padding: 1.1rem;
   font-family: inherit;
-  font-size: 1.125rem;
+  font-size: 1.2rem;
   font-weight: 700;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
   margin-top: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  letter-spacing: -0.5px;
 }
 
-.donate-button:hover {
-  background: #10d493;
-  transform: scale(1.02);
-  box-shadow: 0 0 30px var(--primary-glow);
+.donate-button:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.02);
+  background: linear-gradient(135deg, rgba(16, 212, 147, 0.95) 0%, rgba(5, 150, 105, 0.85) 100%);
+  box-shadow: 0 15px 35px rgba(16, 185, 129, 0.4), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+}
+
+.donate-button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.donate-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255,255,255,0.4);
+  border: 1px solid transparent;
 }
 .payment-methods {
   display: flex;
@@ -302,19 +370,18 @@ body {
 }
 
 .mosque-portal-link {
-  position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
+  display: inline-block;
   padding: 0.6rem 1.2rem;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--surface-border);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.6);
   font-size: 0.85rem;
   font-weight: 500;
   transition: all 0.2s;
   cursor: pointer;
-  z-index: 10;
+  text-decoration: none;
+  margin-top: 2rem;
 }
 
 .mosque-portal-link:hover {
@@ -323,13 +390,7 @@ body {
   transform: translateY(-2px);
 }
 
-@media (max-width: 600px) {
-  .mosque-portal-link {
-    position: static;
-    margin-bottom: 2rem;
-    order: -1;
-  }
-}
+
 
 /* Mosque Portal Styles */
 .dashboard-container {
@@ -461,9 +522,9 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  font-family: 'Amiri', serif; /* Or a standard serif if Amiri isn't loaded, but we can try to use a system font that looks ok for Arabic */
-  font-size: 20rem; /* Very large */
-  color: rgba(16, 185, 129, 0.03); /* Primary color but very faint */
+  font-family: 'Amiri', serif;
+  font-size: 20rem;
+  color: rgba(16, 185, 129, 0.03);
   white-space: nowrap;
   pointer-events: none;
   z-index: 0;
@@ -474,16 +535,45 @@ body {
   font-weight: 700;
 }
 
+@media (max-width: 600px) {
+  .background-calligraphy {
+    font-size: 8rem;
+  }
+  .glass-card {
+    padding: 1.5rem 1.25rem 1.25rem;
+    border-radius: 32px;
+    width: 95%;
+    gap: 0.5rem;
+  }
+  .app-logo {
+    font-size: 2.5rem !important;
+    margin-bottom: 1rem !important;
+  }
+  .main-container {
+    padding-top: 1rem;
+    padding-bottom: calc(120px + env(safe-area-inset-bottom)); /* Increased to stay above Safari bar */
+    justify-content: flex-start;
+  }
+  .wheel-picker-container {
+    height: 160px; /* Slightly shorter to gain space */
+    margin: 0.5rem 0;
+  }
+}
+
 .app-logo {
-  font-size: 2rem;
+  font-size: 3.5rem;
   font-weight: 800;
   letter-spacing: -0.05em;
   background: linear-gradient(135deg, #fff 0%, #10b981 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 2rem;
+  padding-right: 0.1em; /* Empêche le 'p' d'être coupé par le masque transparent */
+  padding-bottom: 0.3em; /* Empêche le bas des 'p' d'être coupé avec de la marge */
+  margin-bottom: 1rem;
   text-align: center;
+  display: inline-block;
+  filter: drop-shadow(0 4px 10px rgba(16, 185, 129, 0.2));
 }
 
 .glass-card {

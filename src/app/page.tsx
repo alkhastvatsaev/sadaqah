@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { loadStripe } from '@stripe/stripe-js';
 import {
@@ -10,12 +10,13 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
+import QRCode from 'react-qr-code';
 
 // Load Stripe outside of component to avoid recreating it
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string);
 
 // Predefined donation amounts
-const PRESET_AMOUNTS = [1, 2, 5, 10];
+const PRESET_AMOUNTS = [2, 5, 10, 20, 50, 100, 'Autre'];
 
 // Independent background component to avoid hydration issues
 function BackgroundCalligraphy() {
@@ -26,8 +27,102 @@ function BackgroundCalligraphy() {
   );
 }
 
+// Apple-style vertical wheel picker
+function WheelPicker({ options, selectedIndex, onChange }: { options: (number | string)[], selectedIndex: number, onChange: (index: number) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const itemHeight = 60; // Has to match the css and scroll logic
+
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const targetTop = selectedIndex * itemHeight;
+      if (Math.abs(containerRef.current.scrollTop - targetTop) > 5) {
+        containerRef.current.scrollTo({
+          top: targetTop,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, [selectedIndex]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const top = e.currentTarget.scrollTop;
+    const newIndex = Math.round(top / itemHeight);
+    
+    // Clear any existing timeout
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    
+    // Only update if it's a valid new index
+    if (newIndex !== selectedIndex && newIndex >= 0 && newIndex < options.length) {
+      // Small delay to ensure smooth scrolling isn't interrupted by re-renders
+      timeoutRef.current = setTimeout(() => {
+        onChange(newIndex);
+      }, 50);
+    }
+  };
+
+  const handleOptionClick = (idx: number) => {
+    onChange(idx);
+  };
+
+  return (
+    <div className="wheel-picker-container">
+      <div 
+        ref={containerRef}
+        onScroll={handleScroll}
+        style={{
+          height: '100%',
+          overflowY: 'scroll',
+          scrollSnapType: 'y mandatory',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}
+        className="hide-scrollbar"
+      >
+        <div style={{ height: '70px' }}></div>
+        {options.map((opt, idx) => {
+          const isSelected = idx === selectedIndex;
+          return (
+            <div 
+              key={typeof opt === 'string' ? opt : `preset-${opt}`}
+              style={{
+                height: `${itemHeight}px`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                scrollSnapAlign: 'center',
+                fontSize: isSelected ? '3rem' : '1.5rem',
+                fontWeight: isSelected ? 800 : 500,
+                color: isSelected ? 'white' : 'rgba(255,255,255,0.3)',
+                transition: 'all 0.2s ease-out'
+              }}
+            >
+              <div 
+                style={{ cursor: 'pointer', width: '100%', textAlign: 'center', pointerEvents: 'auto' }} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOptionClick(idx);
+                }}
+              >
+                {typeof opt === 'number' ? `${opt}€` : opt}
+              </div>
+            </div>
+          )
+        })}
+        <div style={{ height: '70px' }}></div>
+      </div>
+      <style jsx>{`
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // Internal component for the form inside Elements provider
-function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosqueName: string, onCancel: () => void }) {
+function CheckoutForm({ amount, finalAmount, mosqueName, onCancel }: { amount: number, finalAmount: number, mosqueName: string, onCancel: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -56,10 +151,10 @@ function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosque
     }
   };
 
-  const handleExpressConfirm = async (event: { preventDefault: () => void }) => {
-    // Le composant gère lui-même la confirmation, mais on peut ajouter une logique extra si besoin
+  const handleExpressConfirm = async (event: any) => {
     if (!stripe || !elements) return;
-    
+
+    // The event already contains the confirmation logic for ExpressCheckout
     const { error } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -101,7 +196,7 @@ function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosque
         className="donate-button"
         style={{ marginTop: 0 }}
       >
-        {isSubmitting ? 'Traitement...' : `Payer ${amount}€`}
+        {isSubmitting ? 'Traitement...' : `Payer ${finalAmount.toFixed(2)}€`}
       </button>
       
       <button 
@@ -115,19 +210,90 @@ function CheckoutForm({ amount, mosqueName, onCancel }: { amount: number, mosque
     </form>
   );
 }
+// Separate component for the Express Checkout on the landing page to use Stripe hooks
+function ExpressCheckoutSection({ amount, mosqueName, coverFees, isValid }: { amount: number, mosqueName: string, coverFees: boolean, isValid: boolean }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isProcessing, setIsProcessing] = useState(false);
 
+  if (!isValid) return null;
+
+  const handleConfirm = async (event: any) => {
+    if (!stripe || !elements) return;
+    setIsProcessing(true);
+
+    try {
+      // 1. Create the Payment Intent on the fly
+      const res = await fetch('/api/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amount, mosqueName, coverFees }),
+      });
+      
+      const { clientSecret } = await res.json();
+
+      // 2. Confirm the payment with the secret we just got
+      const { error } = await stripe.confirmPayment({
+        elements,
+        clientSecret,
+        confirmParams: {
+          return_url: `${window.location.origin}/?success=true&mosqueName=${encodeURIComponent(mosqueName)}`,
+        },
+      });
+
+      if (error) {
+        alert(error.message);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Une erreur est survenue lors du paiement express');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: '1.5rem', minHeight: '48px' }}>
+      <ExpressCheckoutElement 
+        onConfirm={handleConfirm}
+        options={{
+          buttonType: {
+            applePay: 'donate',
+            googlePay: 'donate',
+          },
+          buttonTheme: {
+            applePay: 'white-outline',
+            googlePay: 'black',
+          }
+        }}
+      />
+    </div>
+  );
+}
 export default function Home() {
-  const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  const [sliderIndex, setSliderIndex] = useState<number>(2); // defaults to 10€
+  const [isCustom, setIsCustom] = useState<boolean>(false);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [mosqueName, setMosqueName] = useState('Grande Mosquée');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoadingSecret, setIsLoadingSecret] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [coverFees, setCoverFees] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
 
-  const currentAmount = selectedAmount || (customAmount ? Number(customAmount) : 0);
+  const presetVal = PRESET_AMOUNTS[sliderIndex];
+  const currentAmount = isCustom ? (customAmount ? Number(customAmount) : 0) : (typeof presetVal === 'number' ? presetVal : 0);
   const isValidAmount = currentAmount > 0;
 
+  const STRIPE_FEE_PERCENTAGE = 0.017;
+  const STRIPE_FIXED_FEE = 0.25;
+  const totalAmount = (isValidAmount && coverFees)
+    ? Math.round(((currentAmount + STRIPE_FIXED_FEE) / (1 - STRIPE_FEE_PERCENTAGE)) * 100) / 100
+    : currentAmount;
+
   useEffect(() => {
+    setMounted(true);
     if (typeof window !== 'undefined') {
       const query = new URLSearchParams(window.location.search);
       if (query.get('success')) {
@@ -138,6 +304,10 @@ export default function Home() {
     }
   }, []);
 
+  if (!mounted) {
+    return <main className="main-container"><BackgroundCalligraphy /></main>;
+  }
+
   const handleStartPayment = async () => {
     if (!isValidAmount) return;
     
@@ -146,7 +316,7 @@ export default function Home() {
       const res = await fetch('/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: currentAmount, mosqueName }),
+        body: JSON.stringify({ amount: currentAmount, mosqueName, coverFees }),
       });
       
       const data = await res.json();
@@ -163,6 +333,7 @@ export default function Home() {
     }
   };
 
+
   if (isSuccess) {
     return (
       <main className="main-container">
@@ -171,7 +342,7 @@ export default function Home() {
           <div className="success-icon">✓</div>
           <h1 className="barakallah">Barakallahu feek</h1>
           <p className="subtitle">
-            Merci pour votre don à la <strong>{mosqueName}</strong>. Que Dieu vous récompense grandement.
+            Merci pour votre don. Que Dieu vous récompense grandement.
           </p>
           <button 
             className="card-button" 
@@ -191,14 +362,14 @@ export default function Home() {
     <main className="main-container">
       <BackgroundCalligraphy />
       
-      <Link href="/mosquee/register" className="mosque-portal-link">
-        Vous êtes une mosquée ?
-      </Link>
-
       <div className="glass-card" style={{ maxWidth: '440px' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 className="app-logo">
-            Sadaqah App
+          <h1 
+            className="app-logo" 
+            onClick={() => setShowQRModal(true)}
+            style={{ cursor: 'pointer', lineHeight: '0.9' }}
+          >
+            Sadaqah<br />App
           </h1>
         </div>
 
@@ -206,8 +377,9 @@ export default function Home() {
         {clientSecret ? (
           <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
              <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Montant du don</p>
-                <p style={{ fontSize: '2rem', fontWeight: 'bold', color: 'white' }}>{currentAmount}€</p>
+                <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Montant de la transaction</p>
+                <p style={{ fontSize: '2rem', fontWeight: 'bold', color: 'white' }}>{totalAmount.toFixed(2)}€</p>
+                {coverFees && <p style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>Dont {(totalAmount - currentAmount).toFixed(2)}€ de frais couverts</p>}
              </div>
              <Elements 
                 stripe={stripePromise} 
@@ -221,6 +393,7 @@ export default function Home() {
               >
               <CheckoutForm 
                 amount={currentAmount} 
+                finalAmount={totalAmount}
                 mosqueName={mosqueName} 
                 onCancel={() => setClientSecret(null)} 
               />
@@ -229,71 +402,234 @@ export default function Home() {
         ) : (
           /* Selection Step */
           <>
-            <div className="form-group">
-              <input 
-                type="text" 
-                value={mosqueName}
-                onChange={(e) => setMosqueName(e.target.value)}
-                className="title-input"
-                placeholder="Nom de la mosquée"
-              />
-              <p className="subtitle">Soutenez votre communauté.</p>
+            <div style={{ margin: '1rem 0', padding: '1.5rem 0' }}>
+              {!isCustom ? (
+                <>
+                  <WheelPicker 
+                    options={PRESET_AMOUNTS}
+                    selectedIndex={sliderIndex}
+                    onChange={(idx) => {
+                      setSliderIndex(idx);
+                      if (PRESET_AMOUNTS[idx] === 'Autre') {
+                        // Briefly show 'Autre' then switch to custom mode
+                        setTimeout(() => setIsCustom(true), 150);
+                      }
+                    }}
+                  />
+                </>
+              ) : (
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      marginBottom: '1.5rem',
+                      position: 'relative'
+                    }}>
+                      <input
+                        type="number"
+                        style={{ 
+                          fontSize: '3.5rem', 
+                          fontWeight: 700,
+                          width: '100%', 
+                          background: 'transparent', 
+                          border: 'none', 
+                          color: 'white', 
+                          textAlign: 'center', 
+                          outline: 'none',
+                          padding: 0,
+                          letterSpacing: '-2px',
+                          caretColor: 'transparent'
+                        }}
+                        placeholder="0"
+                        value={customAmount}
+                        onChange={(e) => setCustomAmount(e.target.value)}
+                        autoFocus
+                      />
+                      {customAmount && <span style={{ fontSize: '2rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600, marginLeft: '0.5rem', position: 'absolute', right: '3.5rem' }}>€</span>}
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <button 
+                        onClick={() => { setIsCustom(false); setCustomAmount(''); }} 
+                        style={{ 
+                          background: 'rgba(255,255,255,0.05)', 
+                          border: '1px solid rgba(255,255,255,0.1)', 
+                          borderRadius: '24px', 
+                          padding: '0.75rem 2rem', 
+                          color: 'rgba(255,255,255,0.8)', 
+                          fontSize: '0.95rem', 
+                          fontWeight: 500, 
+                          cursor: 'pointer', 
+                          transition: 'all 0.2s', 
+                          boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+                          backdropFilter: 'blur(10px)'
+                        }} 
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.transform = 'translateY(-1px)'; }} 
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                      >
+                         Retour
+                      </button>
+                    </div>
+                </div>
+              )}
             </div>
 
-            <div className="amount-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-              {PRESET_AMOUNTS.map((amount) => (
-                <button
-                  key={amount}
-                  className={`amount-button ${selectedAmount === amount ? 'selected' : ''}`}
-                  onClick={() => {
-                    setSelectedAmount(amount);
-                    setCustomAmount('');
-                  }}
-                >
-                  {amount}€
-                </button>
-              ))}
-            </div>
+            <Elements 
+              stripe={stripePromise} 
+              options={{ 
+                mode: 'payment',
+                amount: Math.round(totalAmount * 100),
+                currency: 'eur',
+                appearance: { theme: 'night' }
+              }}
+            >
+              <ExpressCheckoutSection 
+                amount={currentAmount}
+                mosqueName={mosqueName}
+                coverFees={coverFees}
+                isValid={isValidAmount}
+              />
+            </Elements>
 
             <button 
               className="donate-button"
               disabled={!isValidAmount || isLoadingSecret}
               onClick={handleStartPayment}
+              style={{ marginBottom: '0.75rem' }}
             >
-              {isLoadingSecret ? 'Chargement...' : 'Faire un don'}
+              {isLoadingSecret ? 'Chargement...' : (isValidAmount ? `Donner ${totalAmount.toFixed(2)}€` : 'Continuer')}
             </button>
+
+            {isValidAmount && (
+              <div 
+                style={{ 
+                  margin: '0', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  gap: '1.5rem',
+                  padding: '0.5rem 0 1rem', 
+                  cursor: 'pointer'
+                }}
+                onClick={() => setCoverFees(!coverFees)}
+              >
+                <div style={{ paddingRight: '0.5rem', textAlign: 'right' }}>
+                  <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+                    +{(totalAmount - currentAmount).toFixed(2).replace('.', ',')}€ de frais Stripe
+                  </span>
+                </div>
+                <input 
+                  type="checkbox" 
+                  className="ios-toggle"
+                  checked={coverFees} 
+                  onChange={(e) => setCoverFees(e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            )}
           </>
         )}
 
-        {/* Security Footer */}
-        {!clientSecret && (
-           <div style={{ textAlign: 'center', marginTop: '1.5rem', opacity: 0.5, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-            </svg>
-            Paiement 100% sécurisé via Stripe
-          </div>
-        )}
       </div>
 
-       <footer style={{ 
-        marginTop: '3rem',
-        color: 'rgba(255,255,255,0.3)',
-        fontSize: '0.75rem',
-        textAlign: 'center',
-        display: 'flex',
-        gap: '1.5rem',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexWrap: 'wrap'
-      }}>
-        <span>© 2026 Sadaqah App</span>
-        <span style={{ width: 4, height: 4, background: 'currentColor', borderRadius: '50%' }}></span>
-        <a href="#" style={{ color: 'inherit', textDecoration: 'none', transition: 'color 0.2s' }}>Mentions légales</a>
-        <a href="#" style={{ color: 'inherit', textDecoration: 'none', transition: 'color 0.2s' }}>CGV</a>
-        <a href="#" style={{ color: 'inherit', textDecoration: 'none', transition: 'color 0.2s' }}>Confidentialité</a>
-      </footer>
+
+      {/* Apple-style QR Code Modal (Billboard / Flyer Quality) */}
+      {showQRModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(30px)',
+          WebkitBackdropFilter: 'blur(30px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '2rem',
+          animation: 'fadeIn 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)'
+        }} onClick={() => setShowQRModal(false)}>
+          
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.02) 100%)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '40px',
+            padding: '3rem 2rem',
+            textAlign: 'center',
+            maxWidth: '380px',
+            width: '100%',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2)',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            overflow: 'hidden'
+          }} onClick={e => e.stopPropagation()}>
+            {/* Background Glow Effect inside the card for that premium feel */}
+            <div style={{
+              position: 'absolute',
+              top: '-20%', left: '-20%', right: '-20%', bottom: '-20%',
+              background: 'radial-gradient(circle at top right, rgba(16, 185, 129, 0.15) 0%, transparent 50%)',
+              pointerEvents: 'none',
+              zIndex: 0
+            }}></div>
+
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <h1 className="app-logo" style={{ lineHeight: '0.9' }}>
+                Sadaqah<br />App
+              </h1>
+              
+              {/* Premium QR Code Container */}
+              <div style={{ 
+                background: '#ffffff', 
+                padding: '1.25rem', 
+                borderRadius: '28px',
+                display: 'inline-block',
+                marginBottom: '3rem',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.4), inset 0 0 0 2px rgba(0,0,0,0.05)',
+                transform: 'scale(1.05)',
+                position: 'relative'
+              }}>
+
+
+                <QRCode 
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/`} 
+                  size={220} 
+                  bgColor="#ffffff" 
+                  fgColor="#040702" 
+                  level="H"
+                />
+              </div>
+              
+              <button 
+                onClick={() => setShowQRModal(false)}
+                style={{ 
+                  width: '100%', 
+                  background: 'rgba(255,255,255,0.08)', 
+                  color: 'white', 
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  padding: '1.2rem',
+                  fontSize: '1.1rem',
+                  fontWeight: 600,
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backdropFilter: 'blur(10px)'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1.02)'; }} 
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.transform = 'scale(1)'; }}
+              >
+                Fermer
+              </button>
+
+              <div style={{ textAlign: 'center' }}>
+                <Link href="/mosquee/register" className="mosque-portal-link">
+                  Vous êtes une mosquée ?
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
