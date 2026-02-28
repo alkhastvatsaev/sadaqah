@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -11,12 +12,25 @@ import {
   useElements,
 } from '@stripe/react-stripe-js';
 import QRCode from 'react-qr-code';
+import { STRASBOURG_MOSQUES, type Mosque } from './data/mosques';
 
 // Load Stripe outside of component to avoid recreating it
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string);
 
 // Predefined donation amounts
 const PRESET_AMOUNTS = [2, 5, 10, 20, 50, 100, 'Autre'];
+
+
+// Calculate distance between two GPS coordinates (Haversine formula)
+function getDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
 
 // Independent background component to avoid hydration issues
 function BackgroundCalligraphy() {
@@ -270,17 +284,23 @@ function ExpressCheckoutSection({ amount, mosqueName, coverFees, isValid }: { am
     </div>
   );
 }
-export default function Home() {
+function HomeContent() {
   const [sliderIndex, setSliderIndex] = useState<number>(2); // defaults to 10€
   const [isCustom, setIsCustom] = useState<boolean>(false);
   const [customAmount, setCustomAmount] = useState<string>('');
-  const [mosqueName, setMosqueName] = useState('Grande Mosquée');
+  const [selectedMosque, setSelectedMosque] = useState<Mosque>(STRASBOURG_MOSQUES[0]);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isLoadingSecret, setIsLoadingSecret] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [coverFees, setCoverFees] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [showMosqueSelector, setShowMosqueSelector] = useState(false);
+  const [mosqueSearch, setMosqueSearch] = useState('');
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+
+  const searchParams = useSearchParams();
+  const mosqueName = selectedMosque.name;
 
   const presetVal = PRESET_AMOUNTS[sliderIndex];
   const currentAmount = isCustom ? (customAmount ? Number(customAmount) : 0) : (typeof presetVal === 'number' ? presetVal : 0);
@@ -295,14 +315,65 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
     if (typeof window !== 'undefined') {
-      const query = new URLSearchParams(window.location.search);
-      if (query.get('success')) {
+      const success = searchParams.get('success');
+      if (success) {
         setIsSuccess(true);
-        const name = query.get('mosqueName');
-        if (name) setMosqueName(decodeURIComponent(name));
+        const name = searchParams.get('mosqueName');
+        if (name) {
+          const m = STRASBOURG_MOSQUES.find(m => m.name === decodeURIComponent(name));
+          if (m) setSelectedMosque(m);
+        }
+      }
+
+      // Check for mosque in URL (slug or siret)
+      const mosqueId = searchParams.get('m');
+      if (mosqueId) {
+        const m = STRASBOURG_MOSQUES.find(m => 
+          m.slug === mosqueId || m.siret === mosqueId || m.id.toString() === mosqueId
+        );
+        if (m) setSelectedMosque(m);
+      }
+
+      // Request geolocation
+      if (navigator.geolocation && !mosqueId) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => {} // silently fail
+        );
       }
     }
-  }, []);
+  }, [searchParams]);
+
+  // Auto-select nearest mosque when location is obtained
+  useEffect(() => {
+    if (!userLocation) return;
+    let nearest = STRASBOURG_MOSQUES[0];
+    let minDist = Infinity;
+    for (const m of STRASBOURG_MOSQUES) {
+      const d = getDistanceKm(userLocation.lat, userLocation.lng, m.lat, m.lng);
+      if (d < minDist) {
+        minDist = d;
+        nearest = m;
+      }
+    }
+    setSelectedMosque(nearest);
+  }, [userLocation]);
+
+  // Filter and sort mosques
+  const filteredMosques = STRASBOURG_MOSQUES
+    .filter(m => 
+      m.name.toLowerCase().includes(mosqueSearch.toLowerCase()) ||
+      m.address.toLowerCase().includes(mosqueSearch.toLowerCase()) ||
+      m.neighborhood.toLowerCase().includes(mosqueSearch.toLowerCase())
+    )
+    .map(m => ({
+      ...m,
+      distance: userLocation ? getDistanceKm(userLocation.lat, userLocation.lng, m.lat, m.lng) : null
+    }))
+    .sort((a, b) => {
+      if (a.distance !== null && b.distance !== null) return a.distance - b.distance;
+      return 0;
+    });
 
   if (!mounted) {
     return <main className="main-container"><BackgroundCalligraphy /></main>;
@@ -363,14 +434,44 @@ export default function Home() {
       <BackgroundCalligraphy />
       
       <div className="glass-card" style={{ maxWidth: '440px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1rem' }}>
           <h1 
             className="app-logo" 
             onClick={() => setShowQRModal(true)}
-            style={{ cursor: 'pointer', lineHeight: '0.9' }}
+            style={{ cursor: 'pointer', lineHeight: '0.9', marginBottom: '0.4rem' }}
           >
             Sadaqah<br />App
           </h1>
+
+          <button
+            onClick={() => setShowMosqueSelector(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: '0.82rem',
+              fontFamily: 'inherit',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              transition: 'all 0.2s',
+              maxWidth: '100%',
+            }}
+          >
+            <span style={{ 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis', 
+              whiteSpace: 'nowrap',
+              fontWeight: 500 
+            }}>
+              {mosqueName}
+            </span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="rgba(16,185,129,0.6)">
+              <path d="M2 4L5 7L8 4" stroke="rgba(16,185,129,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
 
         {/* If we have a client secret, show the payment form directly */}
@@ -474,22 +575,24 @@ export default function Home() {
               )}
             </div>
 
-            <Elements 
-              stripe={stripePromise} 
-              options={{ 
-                mode: 'payment',
-                amount: Math.round(totalAmount * 100),
-                currency: 'eur',
-                appearance: { theme: 'night' }
-              }}
-            >
-              <ExpressCheckoutSection 
-                amount={currentAmount}
-                mosqueName={mosqueName}
-                coverFees={coverFees}
-                isValid={isValidAmount}
-              />
-            </Elements>
+            {isValidAmount && (
+              <Elements 
+                stripe={stripePromise} 
+                options={{ 
+                  mode: 'payment',
+                  amount: Math.max(Math.round(totalAmount * 100), 50),
+                  currency: 'eur',
+                  appearance: { theme: 'night' }
+                }}
+              >
+                <ExpressCheckoutSection 
+                  amount={currentAmount}
+                  mosqueName={mosqueName}
+                  coverFees={coverFees}
+                  isValid={isValidAmount}
+                />
+              </Elements>
+            )}
 
             <button 
               className="donate-button"
@@ -592,7 +695,7 @@ export default function Home() {
 
 
                 <QRCode 
-                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/`} 
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?m=${selectedMosque.slug}`} 
                   size={220} 
                   bgColor="#ffffff" 
                   fgColor="#040702" 
@@ -630,6 +733,190 @@ export default function Home() {
           </div>
         </div>
       )}
+      {/* Mosque Selector Modal */}
+      {showMosqueSelector && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.92)',
+          backdropFilter: 'blur(30px)',
+          WebkitBackdropFilter: 'blur(30px)',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 100,
+          animation: 'fadeIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)',
+          padding: 'env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0',
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '1.5rem 1.5rem 1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            flexShrink: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'white', margin: 0 }}>
+                Choisir une mosquée
+              </h2>
+              <button
+                onClick={() => { setShowMosqueSelector(false); setMosqueSearch(''); }}
+                style={{
+                  background: 'rgba(255,255,255,0.1)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '36px',
+                  height: '36px',
+                  color: 'white',
+                  fontSize: '1.2rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >✕</button>
+            </div>
+
+            {/* Search Bar */}
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Rechercher une mosquée, quartier..."
+                value={mosqueSearch}
+                onChange={(e) => setMosqueSearch(e.target.value)}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '0.9rem 1rem 0.9rem 2.8rem',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'rgba(255,255,255,0.08)',
+                  color: 'white',
+                  fontSize: '1rem',
+                  fontFamily: 'inherit',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <svg style={{
+                position: 'absolute',
+                left: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                opacity: 0.4,
+              }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <path d="M21 21l-4.35-4.35" />
+              </svg>
+            </div>
+
+            {userLocation && (
+              <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+                Triées par distance
+              </p>
+            )}
+          </div>
+
+          {/* Mosque List */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '0 1.5rem 2rem',
+            WebkitOverflowScrolling: 'touch',
+          }}>
+            {filteredMosques.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem 0', color: 'rgba(255,255,255,0.4)' }}>
+                <p>Aucune mosquée trouvée</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {filteredMosques.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setSelectedMosque(m);
+                      setShowMosqueSelector(false);
+                      setMosqueSearch('');
+                    }}
+                    style={{
+                      background: selectedMosque?.id === m.id
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : 'rgba(255,255,255,0.05)',
+                      border: selectedMosque?.id === m.id
+                        ? '1px solid rgba(16, 185, 129, 0.4)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '18px',
+                      padding: '1rem 1.2rem',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      fontFamily: 'inherit',
+                      width: '100%',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{
+                        color: 'white',
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                        margin: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>{m.name}</p>
+                      <p style={{
+                        color: 'rgba(255,255,255,0.45)',
+                        fontSize: '0.75rem',
+                        margin: '0.25rem 0 0 0',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>{m.address}</p>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      {m.distance !== null && (
+                        <span style={{
+                          color: 'var(--primary)',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                        }}>
+                          {m.distance < 1
+                            ? `${Math.round(m.distance * 1000)}m`
+                            : `${m.distance.toFixed(1)}km`
+                          }
+                        </span>
+                      )}
+                      <p style={{
+                        color: 'rgba(255,255,255,0.3)',
+                        fontSize: '0.7rem',
+                        margin: '0.15rem 0 0 0',
+                      }}>{m.neighborhood}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <main className="main-container">
+        <div className="background-calligraphy">
+          Sadaqah App
+        </div>
+      </main>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }
