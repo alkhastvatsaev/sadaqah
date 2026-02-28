@@ -8,12 +8,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 
 export async function POST(req: Request) {
   let baseUrl = "";
+  let host: string | null = null;
   try {
     const { mosqueId, email, name, siret } = await req.json();
 
     // Récupération sécurisée du host via next/headers
     const headersList = await headers();
-    const host = headersList.get("x-forwarded-host") || headersList.get("host");
+    host = headersList.get("x-forwarded-host") || headersList.get("host");
     
     // On construit l'URL de base à partir du host actuel pour être sûr
     baseUrl = host ? `https://${host}` : (process.env.NEXT_PUBLIC_BASE_URL || "");
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
       debug: {
         baseUrl: baseUrl,
         env: process.env.NEXT_PUBLIC_BASE_URL || "missing",
+        host: host || "unknown",
       }
     }, { status: 500 });
   }
