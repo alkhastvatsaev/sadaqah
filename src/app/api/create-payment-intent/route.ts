@@ -30,11 +30,10 @@ export async function POST(req: Request) {
       finalAmountInEuros = Math.round(((amount + STRIPE_FIXED_FEE) / (1 - STRIPE_FEE_PERCENTAGE)) * 100) / 100;
     }
 
-    // 1. Trouver l'ID de compte connecté de la mosquée (Normalement via DB)
-    // Pour la démo on cherche dans notre fichier de données
+    // 1. Trouver l'ID de compte connecté de la mosquée
     const { STRASBOURG_MOSQUES } = require("../../data/mosques");
     const mosque = STRASBOURG_MOSQUES.find((m: any) => m.name === mosqueName);
-    const destinationId = mosque?.stripeAccountId;
+    const connectedAccountId = mosque?.stripeAccountId;
 
     const paymentIntentOptions: Stripe.PaymentIntentCreateParams = {
       amount: Math.round(finalAmountInEuros * 100), // En centimes
@@ -48,16 +47,23 @@ export async function POST(req: Request) {
       automatic_payment_methods: { enabled: true },
     };
 
-    // Si on a un compte connecté, on utilise Destination Charges
-    if (destinationId) {
-      paymentIntentOptions.transfer_data = {
-        destination: destinationId,
+    // Blueprint Node: create-checkout-session (adapted for PaymentIntent)
+    // For Direct Charges, we use the Stripe-Account header
+    let stripeRequestOptions: Stripe.RequestOptions = {};
+    
+    if (connectedAccountId) {
+      stripeRequestOptions = {
+        stripeAccount: connectedAccountId,
       };
-      // Note: application_fee_amount peut être ajouté ici si besoin
-      // paymentIntentOptions.application_fee_amount = 0; 
+      // On peut ajouter des frais de plateforme ici (application_fee_amount)
+      // Par exemple 1% ou un montant fixe. On met 0 par défaut pour les dons.
+      // paymentIntentOptions.application_fee_amount = 0;
     }
 
-    const paymentIntent = await stripe.paymentIntents.create(paymentIntentOptions);
+    const paymentIntent = await stripe.paymentIntents.create(
+      paymentIntentOptions,
+      stripeRequestOptions
+    );
 
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,

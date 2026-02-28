@@ -25,22 +25,35 @@ export async function POST(req: Request) {
   }
 
   // Handle the event
-  switch (event.type) {
+  const eventType = event.type as string;
+  switch (eventType) {
     case "account.updated":
-      const account = event.data.object as Stripe.Account;
-      console.log(`Account updated: ${account.id}`);
-      // Ici: Mettre à jour le statut dans la DB
-      // if (account.details_submitted) { ... }
+    case "v2.core.account[configuration.merchant].capability_status_updated":
+      const account = event.data.object as any;
+      console.log(`[Stripe Webhook] Account status update: ${account.id || (event.data as any).id}`);
       break;
 
     case "payment_intent.succeeded":
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
-      console.log(`Payment succeeded: ${paymentIntent.id}`);
-      // Ici: Logique de succès (email, etc.)
+      console.log(`[Stripe Webhook] Payment succeeded: ${paymentIntent.id} (Montant: ${paymentIntent.amount/100}€)`);
+      // Metadata help identification
+      if (paymentIntent.metadata.mosque_name) {
+        console.log(`Donation reçue pour: ${paymentIntent.metadata.mosque_name}`);
+      }
+      break;
+
+    case "checkout.session.completed":
+      const session = event.data.object as Stripe.Checkout.Session;
+      console.log(`[Stripe Webhook] Checkout Session completed: ${session.id}`);
+      break;
+
+    case "invoice.payment_succeeded":
+      const invoice = event.data.object as Stripe.Invoice;
+      console.log(`[Stripe Webhook] Invoice payment succeeded: ${invoice.id}`);
       break;
 
     default:
-      console.log(`Unhandled event type ${event.type}`);
+      console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
   }
 
   return NextResponse.json({ received: true });
