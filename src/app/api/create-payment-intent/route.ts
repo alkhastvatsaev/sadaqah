@@ -30,7 +30,13 @@ export async function POST(req: Request) {
       finalAmountInEuros = Math.round(((amount + STRIPE_FIXED_FEE) / (1 - STRIPE_FEE_PERCENTAGE)) * 100) / 100;
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
+    // 1. Trouver l'ID de compte connecté de la mosquée (Normalement via DB)
+    // Pour la démo on cherche dans notre fichier de données
+    const { STRASBOURG_MOSQUES } = require("../../data/mosques");
+    const mosque = STRASBOURG_MOSQUES.find((m: any) => m.name === mosqueName);
+    const destinationId = mosque?.stripeAccountId;
+
+    const paymentIntentOptions: Stripe.PaymentIntentCreateParams = {
       amount: Math.round(finalAmountInEuros * 100), // En centimes
       currency: "eur",
       metadata: {
@@ -40,7 +46,18 @@ export async function POST(req: Request) {
       },
       description: `Don pour ${mosqueName || "la mosquée"}`,
       automatic_payment_methods: { enabled: true },
-    });
+    };
+
+    // Si on a un compte connecté, on utilise Destination Charges
+    if (destinationId) {
+      paymentIntentOptions.transfer_data = {
+        destination: destinationId,
+      };
+      // Note: application_fee_amount peut être ajouté ici si besoin
+      // paymentIntentOptions.application_fee_amount = 0; 
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentOptions);
 
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,

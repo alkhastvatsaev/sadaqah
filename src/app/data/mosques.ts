@@ -7,6 +7,8 @@ export interface Mosque {
   neighborhood: string;
   siret?: string;
   slug: string;
+  stripeAccountId?: string;
+  onboardingComplete?: boolean;
 }
 
 export const STRASBOURG_MOSQUES: Mosque[] = [
