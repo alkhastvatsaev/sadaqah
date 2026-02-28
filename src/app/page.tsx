@@ -298,6 +298,7 @@ function HomeContent() {
   const [showMosqueSelector, setShowMosqueSelector] = useState(false);
   const [mosqueSearch, setMosqueSearch] = useState('');
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -332,7 +333,10 @@ function HomeContent() {
         const m = STRASBOURG_MOSQUES.find(m => 
           m.slug === mosqueId || m.siret === mosqueId || m.id.toString() === mosqueId
         );
-        if (m) setSelectedMosque(m);
+        if (m) {
+          setSelectedMosque(m);
+          setIsLocked(true); // Lock the selection for QR scans
+        }
       }
 
       // Request geolocation
@@ -345,9 +349,9 @@ function HomeContent() {
     }
   }, [searchParams]);
 
-  // Auto-select nearest mosque when location is obtained
+  // Auto-select nearest mosque when location is obtained (ONLY if not locked by URL)
   useEffect(() => {
-    if (!userLocation) return;
+    if (!userLocation || isLocked) return;
     let nearest = STRASBOURG_MOSQUES[0];
     let minDist = Infinity;
     for (const m of STRASBOURG_MOSQUES) {
@@ -461,17 +465,40 @@ function HomeContent() {
               maxWidth: '100%',
             }}
           >
-            <span style={{ 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis', 
-              whiteSpace: 'nowrap',
-              fontWeight: 500 
-            }}>
-              {mosqueName}
-            </span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="rgba(16,185,129,0.6)">
-              <path d="M2 4L5 7L8 4" stroke="rgba(16,185,129,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <span style={{ 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis', 
+                whiteSpace: 'nowrap',
+                fontWeight: 600 
+              }}>
+                {mosqueName}
+              </span>
+              {!isLocked ? (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="rgba(16,185,129,0.6)">
+                  <path d="M2 4L5 7L8 4" stroke="rgba(16,185,129,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              ) : (
+                <div title="Destination vérifiée" style={{ display: 'flex', alignItems: 'center' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </div>
+              )}
+            </div>
+            {isLocked && (
+              <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>
+                {selectedMosque.address} {selectedMosque.siret ? `• SIRET: ${selectedMosque.siret}` : ''}
+              </div>
+            )}
+            {isLocked && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); setIsLocked(false); setShowMosqueSelector(true); }}
+                style={{ background: 'transparent', border: 'none', color: 'var(--primary)', fontSize: '0.7rem', padding: '0.2rem 0', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Changer de destination
+              </button>
+            )}
           </button>
         </div>
 
