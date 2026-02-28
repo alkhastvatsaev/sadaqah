@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
@@ -10,21 +11,24 @@ export async function POST(req: Request) {
   try {
     const { mosqueId, email, name, siret } = await req.json();
 
-    // Détection de l'URL de base (priorité à l'env, sinon headers)
-    const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
-    baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : "");
+    // Récupération sécurisée du host via next/headers
+    const headersList = await headers();
+    const host = headersList.get("x-forwarded-host") || headersList.get("host");
     
-    // Fallback de secours si tout est undefined
+    // On construit l'URL de base à partir du host actuel pour être sûr
+    baseUrl = host ? `https://${host}` : (process.env.NEXT_PUBLIC_BASE_URL || "");
+    
+    // Nettoyage final
+    baseUrl = baseUrl.replace(/\/$/, "");
+    if (baseUrl && !baseUrl.startsWith("http")) baseUrl = `https://${baseUrl}`;
+
+    console.log(`[Stripe] Tentative création compte. Host: ${host} | BaseURL: ${baseUrl}`);
+
     if (!baseUrl) {
-      baseUrl = "https://sadaqah-mosque-ruddy.vercel.app";
+      throw new Error("Impossible de déterminer l'URL de base du site.");
     }
 
-    if (baseUrl && !baseUrl.startsWith("http")) baseUrl = `https://${baseUrl}`;
-    baseUrl = baseUrl.replace(/\/$/, "");
-
-    console.log(`[Stripe V1] Déclenchement onboarding pour ${name} sur ${baseUrl}`);
-
-    // 1. Créer le compte Stripe Express (API V1 - Compatible Test Mode)
+    // 1. Créer le compte Stripe Express
     const account = await stripe.accounts.create({
       type: "express",
       country: "FR",
@@ -36,7 +40,7 @@ export async function POST(req: Request) {
       business_type: "non_profit",
       business_profile: {
         name: name,
-        url: baseUrl,
+        // On NE met PAS d'URL ici pour éviter l'erreur "Not a valid URL" de Stripe
       },
       metadata: {
         mosqueId: mosqueId.toString(),
@@ -44,9 +48,9 @@ export async function POST(req: Request) {
       },
     });
 
-    console.log(`[Stripe V1] Compte créé: ${account.id}`);
+    console.log(`[Stripe] Compte créé: ${account.id}`);
 
-    // 2. Générer le lien d'onboarding (API V1)
+    // 2. Générer le lien d'onboarding
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
       refresh_url: `${baseUrl}/api/stripe/refresh?account=${account.id}`,
