@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import {
   Elements,
@@ -300,6 +300,7 @@ function HomeContent() {
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
 
   const searchParams = useSearchParams();
+  const router = useRouter();
   const mosqueName = selectedMosque.name;
 
   const presetVal = PRESET_AMOUNTS[sliderIndex];
@@ -832,12 +833,14 @@ function HomeContent() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {filteredMosques.map((m) => (
                   <button
-                    key={m.id}
-                    onClick={() => {
-                      setSelectedMosque(m);
-                      setShowMosqueSelector(false);
-                      setMosqueSearch('');
-                    }}
+                      key={m.id}
+                      onClick={() => {
+                        setSelectedMosque(m);
+                        setShowMosqueSelector(false);
+                        setMosqueSearch('');
+                        // Update URL with the mosque slug
+                        router.push(`/?m=${m.slug}`, { scroll: false });
+                      }}
                     style={{
                       background: selectedMosque?.id === m.id
                         ? 'rgba(16, 185, 129, 0.15)'
