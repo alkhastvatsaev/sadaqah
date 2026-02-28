@@ -34,7 +34,8 @@ export async function POST(req: Request) {
       country: "FR",
       email: email,
       capabilities: {
-        transfers: { requested: true }, // On ne demande que le transfert pour l'instant
+        card_payments: { requested: true },
+        transfers: { requested: true },
       },
       business_type: "non_profit",
       business_profile: {
