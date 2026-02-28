@@ -9,12 +9,23 @@ export async function POST(req: Request) {
   try {
     const { mosqueId, email, name, siret } = await req.json();
 
-    // Détection de l'URL de base (priorité à l'env var, sinon détection via headers)
+    // Détection ultra-robuste de l'URL de base
     const host = req.headers.get('host');
-    const protocol = host?.includes('localhost') ? 'http' : 'https';
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`;
+    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : '');
 
-    console.log(`Utilisation de l'URL de base: ${baseUrl}`);
+    // Sécurité: Si l'URL n'a pas de protocole, on l'ajoute
+    if (baseUrl && !baseUrl.startsWith('http')) {
+      baseUrl = `https://${baseUrl}`;
+    }
+    
+    // Nettoyage: Enlever les slashs de fin
+    baseUrl = baseUrl.replace(/\/$/, "");
+
+    console.log(`URL de base finale pour Stripe: ${baseUrl}`);
+
+    if (!baseUrl || baseUrl.includes('localhost') === false && !baseUrl.startsWith('https')) {
+       console.error("URL de base invalide détectée");
+    }
 
     // 1. Créer le compte Stripe Express
     const account = await stripe.accounts.create({
