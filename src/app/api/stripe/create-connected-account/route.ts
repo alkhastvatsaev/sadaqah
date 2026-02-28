@@ -6,12 +6,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 });
 
 export async function POST(req: Request) {
+  let baseUrl = '';
   try {
     const { mosqueId, email, name, siret } = await req.json();
 
     // Détection ultra-robuste de l'URL de base
     const host = req.headers.get('host');
-    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : '');
+    baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : '');
 
     // Sécurité: Si l'URL n'a pas de protocole, on l'ajoute
     if (baseUrl && !baseUrl.startsWith('http')) {
@@ -21,10 +22,10 @@ export async function POST(req: Request) {
     // Nettoyage: Enlever les slashs de fin
     baseUrl = baseUrl.replace(/\/$/, "");
 
-    console.log(`URL de base finale pour Stripe: ${baseUrl}`);
+    console.log(`Debug URL - Host: ${host}, Env: ${process.env.NEXT_PUBLIC_BASE_URL}, Final: ${baseUrl}`);
 
-    if (!baseUrl || baseUrl.includes('localhost') === false && !baseUrl.startsWith('https')) {
-       console.error("URL de base invalide détectée");
+    if (!baseUrl || !baseUrl.startsWith('http')) {
+       throw new Error(`URL de base invalide ou manquante: "${baseUrl}"`);
     }
 
     // 1. Créer le compte Stripe Express
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
       business_type: "non_profit",
       business_profile: {
         name: name,
-        url: baseUrl, // URL du site de l'association ou de la plateforme
+        // On enlève momentanément l'URL ici pour isoler le problème
       },
       metadata: {
         mosqueId: mosqueId.toString(),
@@ -59,16 +60,19 @@ export async function POST(req: Request) {
 
     console.log(`Lien d'onboarding généré: ${accountLink.url}`);
 
-    // 3. Ici vous feriez normalement une mise à jour de votre DB
-    // await db.mosque.update({ where: { id: mosqueId }, data: { stripeAccountId: account.id } })
-    console.log(`Compte créé pour ${name}: ${account.id}`);
-
     return NextResponse.json({
       url: accountLink.url,
       accountId: account.id,
     });
   } catch (err: any) {
-    console.error("Erreur Create Connected Account:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("Erreur complète Stripe:", err);
+    return NextResponse.json({ 
+      error: err.message,
+      debug: {
+        baseUrl: typeof baseUrl !== 'undefined' ? baseUrl : 'undefined',
+        env: process.env.NEXT_PUBLIC_BASE_URL || 'missing',
+        host: req.headers.get('host') || 'missing',
+      }
+    }, { status: 500 });
   }
 }

@@ -24,7 +24,8 @@ export default function AdminMosquePage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        alert('Erreur: ' + (data.error || 'Impossible de générer le lien'));
+        const debugInfo = data.debug ? `\n\nInfos techniques:\n- Env: ${data.debug.env}\n- Host: ${data.debug.host}` : '';
+        alert(`Erreur: ${data.error || 'Impossible de générer le lien'}${debugInfo}`);
       }
     } catch (err) {
       console.error(err);
