@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-// Utilisation de la version spécifiée ou par défaut pour V2
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: "2024-12-18.acacia" as any,
 });
@@ -11,99 +10,58 @@ export async function POST(req: Request) {
   try {
     const { mosqueId, email, name, siret } = await req.json();
 
-    // Détection de l'URL de base
+    // Détection de l'URL de base (priorité à l'env, sinon headers)
     const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
     baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : "");
+    
+    // Fallback de secours si tout est undefined
+    if (!baseUrl) {
+      baseUrl = "https://sadaqah-mosque-ruddy.vercel.app";
+    }
+
     if (baseUrl && !baseUrl.startsWith("http")) baseUrl = `https://${baseUrl}`;
     baseUrl = baseUrl.replace(/\/$/, "");
 
-    console.log(`[Stripe V2] Host détecté: ${host} | BaseURL: ${baseUrl}`);
+    console.log(`[Stripe V1] Déclenchement onboarding pour ${name} sur ${baseUrl}`);
 
-    const stripeVersion = "2024-12-18.acacia";
-
-    // 1. Créez un compte (Node Node Nodes: create-account)
-    const accountResponse = await fetch("https://api.stripe.com/v2/core/accounts", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
-        "Content-Type": "application/json",
-        "Stripe-Version": stripeVersion,
+    // 1. Créer le compte Stripe Express (API V1 - Compatible Test Mode)
+    const account = await stripe.accounts.create({
+      type: "express",
+      country: "FR",
+      email: email,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
       },
-      body: JSON.stringify({
-        display_name: name || "Test account",
-        contact_email: email || "testaccount@example.com",
-        configuration: {
-          merchant: {
-            simulate_accept_tos_obo: true,
-          },
-        },
-        include: [
-          "configuration.merchant",
-          "configuration.recipient",
-          "identity",
-          "defaults",
-          "configuration.customer",
-        ],
-        identity: {
-          country: "FR",
-          business_details: {
-            phone: "0000000000",
-          },
-        },
-        dashboard: "full",
-        defaults: {
-          responsibilities: {
-            losses_collector: "stripe",
-            fees_collector: "stripe",
-          },
-        },
-      }),
+      business_type: "non_profit",
+      business_profile: {
+        name: name,
+        url: baseUrl,
+      },
+      metadata: {
+        mosqueId: mosqueId.toString(),
+        siret: siret,
+      },
     });
 
-    const account = await accountResponse.json();
+    console.log(`[Stripe V1] Compte créé: ${account.id}`);
 
-    if (account.error) {
-       console.error("Détails Erreur Account V2:", account.error);
-       throw new Error(`Erreur Stripe V2 Account: ${account.error.message}`);
-    }
-
-    console.log(`[Stripe V2] Compte créé: ${account.id}`);
-
-    // 2. Créez un lien de compte (Blueprint step: create-account-link)
-    const linkResponse = await fetch("https://api.stripe.com/v2/core/account_links", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
-        "Content-Type": "application/json",
-        "Stripe-Version": stripeVersion,
-      },
-      body: JSON.stringify({
-        account: account.id,
-        use_case: {
-          type: "account_onboarding",
-          account_onboarding: {
-            configurations: ["merchant", "customer"],
-            refresh_url: `${baseUrl}/api/stripe/refresh?account=${account.id}`,
-            return_url: `${baseUrl}/admin/mosquee?onboarding=success&accountId=${account.id}`,
-          },
-        },
-      }),
+    // 2. Générer le lien d'onboarding (API V1)
+    const accountLink = await stripe.accountLinks.create({
+      account: account.id,
+      refresh_url: `${baseUrl}/api/stripe/refresh?account=${account.id}`,
+      return_url: `${baseUrl}/admin/mosquee?onboarding=success&accountId=${account.id}`,
+      type: "account_onboarding",
     });
 
-    const accountLink = await linkResponse.json();
-
-    if (accountLink.error) {
-       throw new Error(`Erreur Stripe V2 Link: ${accountLink.error.message}`);
-    }
-
-    console.log(`[Stripe V2] Lien d'onboarding généré: ${accountLink.url}`);
+    console.log(`[Stripe V1] Lien généré: ${accountLink.url}`);
 
     return NextResponse.json({
       url: accountLink.url,
       accountId: account.id,
     });
   } catch (err: any) {
-    console.error("Erreur Blueprint Stripe Connect:", err);
+    console.error("Erreur Stripe Connect V1:", err);
     return NextResponse.json({ 
       error: err.message,
       debug: {
