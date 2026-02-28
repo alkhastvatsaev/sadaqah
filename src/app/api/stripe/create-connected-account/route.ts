@@ -12,23 +12,22 @@ export async function POST(req: Request) {
     const { mosqueId, email, name, siret } = await req.json();
 
     // Détection de l'URL de base
-    const host = req.headers.get("host");
+    const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
     baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : "");
     if (baseUrl && !baseUrl.startsWith("http")) baseUrl = `https://${baseUrl}`;
     baseUrl = baseUrl.replace(/\/$/, "");
 
-    console.log(`[Stripe V2] Création de compte pour ${name} (${email})`);
+    console.log(`[Stripe V2] Host détecté: ${host} | BaseURL: ${baseUrl}`);
+
+    const stripeVersion = "2024-12-18.acacia";
 
     // 1. Créez un compte (Node Node Nodes: create-account)
-    // On utilise l'API V2 via fetch car le support SDK peut varier selon la config
-    // mais ici on tente via le SDK si possible, sinon via fetch standard
-    
-    // Pour suivre exactement le blueprint /v2/core/accounts
     const accountResponse = await fetch("https://api.stripe.com/v2/core/accounts", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
         "Content-Type": "application/json",
+        "Stripe-Version": stripeVersion,
       },
       body: JSON.stringify({
         display_name: name || "Test account",
@@ -46,7 +45,7 @@ export async function POST(req: Request) {
           "configuration.customer",
         ],
         identity: {
-          country: "FR", // Adapté à la France
+          country: "FR",
           business_details: {
             phone: "0000000000",
           },
@@ -64,6 +63,7 @@ export async function POST(req: Request) {
     const account = await accountResponse.json();
 
     if (account.error) {
+       console.error("Détails Erreur Account V2:", account.error);
        throw new Error(`Erreur Stripe V2 Account: ${account.error.message}`);
     }
 
@@ -75,6 +75,7 @@ export async function POST(req: Request) {
       headers: {
         "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}`,
         "Content-Type": "application/json",
+        "Stripe-Version": stripeVersion,
       },
       body: JSON.stringify({
         account: account.id,
