@@ -28,19 +28,17 @@ export async function POST(req: Request) {
       throw new Error("Impossible de déterminer l'URL de base du site.");
     }
 
-    // 1. Créer le compte Stripe Express
+    // 1. Créer le compte Stripe Express (Minimum strict)
     const account = await stripe.accounts.create({
       type: "express",
       country: "FR",
       email: email,
       capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
+        transfers: { requested: true }, // On ne demande que le transfert pour l'instant
       },
       business_type: "non_profit",
       business_profile: {
         name: name,
-        // On NE met PAS d'URL ici pour éviter l'erreur "Not a valid URL" de Stripe
       },
       metadata: {
         mosqueId: mosqueId.toString(),
