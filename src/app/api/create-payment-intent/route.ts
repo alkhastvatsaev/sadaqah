@@ -48,18 +48,10 @@ export async function POST(req: Request) {
       automatic_payment_methods: { enabled: true },
     };
 
-    let stripeRequestOptions: Stripe.RequestOptions = {};
-    
-    // Si la mosquée a un compte Stripe lié, on fait un Direct Charge
-    if (connectedAccountId) {
-      stripeRequestOptions = {
-        stripeAccount: connectedAccountId,
-      };
-    }
-
+    // On ne passe l'objet d'options que si on a un compte Stripe connecté
     const paymentIntent = await stripe.paymentIntents.create(
       paymentIntentOptions,
-      stripeRequestOptions
+      connectedAccountId ? { stripeAccount: connectedAccountId } : undefined
     );
 
     return NextResponse.json({
