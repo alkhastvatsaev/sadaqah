@@ -244,7 +244,13 @@ function ExpressCheckoutSection({ amount, mosqueName, coverFees, isValid }: { am
         body: JSON.stringify({ amount: amount, mosqueName, coverFees }),
       });
       
-      const { clientSecret } = await res.json();
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Erreur lors de la création du paiement');
+      }
+
+      const clientSecret = data.clientSecret;
 
       // 2. Confirm the payment with the secret we just got
       const { error } = await stripe.confirmPayment({
@@ -256,11 +262,14 @@ function ExpressCheckoutSection({ amount, mosqueName, coverFees, isValid }: { am
       });
 
       if (error) {
+        // Here we show the Stripe-specific error (insufficient funds, card declined, etc.)
         alert(error.message);
       }
-    } catch (err) {
-      console.error(err);
-      alert('Une erreur est survenue lors du paiement express');
+    } catch (err: any) {
+      console.error('Express Pay Error:', err);
+      // Detailed error for debugging
+      const errorDetail = err instanceof Error ? err.message : JSON.stringify(err);
+      alert(`Erreur Paiement Express : ${errorDetail}`);
     } finally {
       setIsProcessing(false);
     }
@@ -396,14 +405,14 @@ function HomeContent() {
       });
       
       const data = await res.json();
-      if (data.clientSecret) {
+      if (res.ok && data.clientSecret) {
         setClientSecret(data.clientSecret);
       } else {
-        alert('Erreur lors de l\'initialisation du paiement');
+        alert(`Erreur Stripe : ${data.error || 'Erreur inconnue'}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert('Une erreur est survenue');
+      alert(`Erreur Réseau : ${error.message}`);
     } finally {
       setIsLoadingSecret(false);
     }
@@ -921,6 +930,19 @@ function HomeContent() {
           </div>
         </div>
       )}
+      {/* Footer with subtle Admin link */}
+      <footer style={{ 
+        padding: '2rem', 
+        textAlign: 'center', 
+        opacity: 0.3, 
+        fontSize: '0.7rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem'
+      }}>
+        <p>© 2026 Sadaqah App. Tous droits réservés.</p>
+        <Link href="/admin/mosquee" style={{ color: 'inherit', textDecoration: 'none' }}>Portal</Link>
+      </footer>
     </main>
   );
 }

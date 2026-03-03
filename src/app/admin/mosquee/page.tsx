@@ -1,10 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { STRASBOURG_MOSQUES } from '../../data/mosques';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 export default function AdminMosquePage() {
   const [loading, setLoading] = useState<string | null>(null);
+  const [mosqueStatuses, setMosqueStatuses] = useState<Record<string, any>>({});
+
+  // Écouter les changements dans Firestore en temps réel
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "mosques"), (snapshot) => {
+      const statuses: Record<string, any> = {};
+      snapshot.forEach(doc => {
+        statuses[doc.id] = doc.data();
+      });
+      setMosqueStatuses(statuses);
+    });
+    return () => unsub();
+  }, []);
 
   const handleOnboard = async (mosque: any) => {
     setLoading(mosque.name);
@@ -14,7 +29,7 @@ export default function AdminMosquePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mosqueId: mosque.id,
-          email: 'contact@elsau.mosquee.fr', // Email de test
+          email: mosque.email || `contact@${mosque.slug}.fr`, // On génère un email si absent
           name: mosque.name,
           siret: mosque.siret || '00000000000000',
         }),
@@ -24,8 +39,7 @@ export default function AdminMosquePage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        const debugInfo = data.debug ? `\n\nInfos techniques:\n- Env: ${data.debug.env}\n- Host: ${data.debug.host}` : '';
-        alert(`Erreur: ${data.error || 'Impossible de générer le lien'}${debugInfo}`);
+        alert(`Erreur: ${data.error || 'Impossible de générer le lien'}`);
       }
     } catch (err) {
       console.error(err);
@@ -36,44 +50,70 @@ export default function AdminMosquePage() {
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', color: 'white', fontFamily: 'sans-serif' }}>
-      <h1 style={{ marginBottom: '2rem' }}>Administration Connect</h1>
+    <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <h1 style={{ margin: 0 }}>Gestion des Mosquées</h1>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Firebase: Connecté</span>
+          <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>Stripe: Test Mode</span>
+        </div>
+      </div>
       
       <div style={{ display: 'grid', gap: '1rem' }}>
-        {STRASBOURG_MOSQUES.map((m) => (
-          <div key={m.id} style={{ 
-            background: 'rgba(255,255,255,0.05)', 
-            padding: '1rem', 
-            borderRadius: '12px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            border: '1px solid rgba(255,255,255,0.1)'
-          }}>
-            <div>
-              <h3 style={{ margin: 0 }}>{m.name}</h3>
-              <p style={{ margin: '0.2rem 0', fontSize: '0.8rem', opacity: 0.6 }}>{m.address}</p>
-              {m.siret && <span style={{ fontSize: '0.7rem', background: '#10b981', padding: '2px 6px', borderRadius: '4px' }}>SIRET: {m.siret}</span>}
+        {STRASBOURG_MOSQUES.map((m) => {
+          const status = mosqueStatuses[m.id.toString()];
+          const isComplete = status?.onboardingComplete;
+          const isChargesEnabled = status?.chargesEnabled;
+
+          return (
+            <div key={m.id} style={{ 
+              background: 'rgba(255,255,255,0.03)', 
+              padding: '1.25rem', 
+              borderRadius: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              border: '1px solid rgba(255,255,255,0.08)',
+              backdropFilter: 'blur(10px)'
+            }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.4rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{m.name}</h3>
+                  {isChargesEnabled ? (
+                    <span style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(16,185,129,0.2)' }}>ACTIF</span>
+                  ) : status?.stripeAccountId ? (
+                    <span style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(245,158,11,0.2)' }}>INCOMPLET</span>
+                  ) : (
+                    <span style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)' }}>NON LIÉ</span>
+                  )}
+                </div>
+                <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.5 }}>{m.address}</p>
+                {status?.stripeAccountId && (
+                  <code style={{ fontSize: '0.7rem', color: '#10b981', opacity: 0.8, display: 'block', marginTop: '0.5rem' }}>{status.stripeAccountId}</code>
+                )}
+              </div>
+              
+              <button 
+                onClick={() => handleOnboard(m)}
+                disabled={loading === m.name}
+                style={{
+                  background: isChargesEnabled ? 'rgba(255,255,255,0.05)' : '#10b981',
+                  color: isChargesEnabled ? 'rgba(255,255,255,0.6)' : 'white',
+                  border: isChargesEnabled ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                  padding: '0.75rem 1.25rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '0.9rem',
+                  transition: 'all 0.2s',
+                  opacity: loading === m.name ? 0.5 : 1
+                }}
+              >
+                {loading === m.name ? '...' : (isChargesEnabled ? 'Gérer Stripe' : (status?.stripeAccountId ? 'Reprendre' : 'Lier Stripe'))}
+              </button>
             </div>
-            
-            <button 
-              onClick={() => handleOnboard(m)}
-              disabled={loading === m.name}
-              style={{
-                background: '#10b981',
-                color: 'white',
-                border: 'none',
-                padding: '0.6rem 1rem',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                opacity: loading === m.name ? 0.5 : 1
-              }}
-            >
-              {loading === m.name ? 'Chargement...' : 'Générer Lien Stripe'}
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

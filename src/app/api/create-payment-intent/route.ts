@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { STRASBOURG_MOSQUES } from "../../data/mosques";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +8,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
-const STRIPE_FEE_PERCENTAGE = 0.017; // 1.7% to match 0.43€ for 10€
+const STRIPE_FEE_PERCENTAGE = 0.017; // 1.7%
 const STRIPE_FIXED_FEE = 0.25; // 0.25€
 
 export async function POST(req: Request) {
@@ -24,14 +25,14 @@ export async function POST(req: Request) {
     let finalAmountInEuros = amount;
 
     if (coverFees) {
-      // Calculate the gross amount needed so the net amount equals 'amount'
-      // gross = (net + 0.25) / (1 - rate)
-      // We round to 2 decimal places to be cent-precise as shown in the UI
-      finalAmountInEuros = Math.round(((amount + STRIPE_FIXED_FEE) / (1 - STRIPE_FEE_PERCENTAGE)) * 100) / 100;
+      // Calcul propre en centimes pour éviter les erreurs de virgule flottante
+      const amountInCents = amount * 100;
+      const fixedFeeInCents = STRIPE_FIXED_FEE * 100;
+      const finalCents = Math.round((amountInCents + fixedFeeInCents) / (1 - STRIPE_FEE_PERCENTAGE));
+      finalAmountInEuros = finalCents / 100;
     }
 
     // 1. Trouver l'ID de compte connecté de la mosquée
-    const { STRASBOURG_MOSQUES } = require("../../data/mosques");
     const mosque = STRASBOURG_MOSQUES.find((m: any) => m.name === mosqueName);
     const connectedAccountId = mosque?.stripeAccountId;
 
@@ -39,25 +40,21 @@ export async function POST(req: Request) {
       amount: Math.round(finalAmountInEuros * 100), // En centimes
       currency: "eur",
       metadata: {
-        mosque_name: mosqueName,
-        original_donation_amount: amount,
+        mosque_name: mosqueName || "Inconnue",
+        original_donation_amount: amount.toString(),
         covered_fees: coverFees ? "yes" : "no",
       },
       description: `Don pour ${mosqueName || "la mosquée"}`,
       automatic_payment_methods: { enabled: true },
     };
 
-    // Blueprint Node: create-checkout-session (adapted for PaymentIntent)
-    // For Direct Charges, we use the Stripe-Account header
     let stripeRequestOptions: Stripe.RequestOptions = {};
     
+    // Si la mosquée a un compte Stripe lié, on fait un Direct Charge
     if (connectedAccountId) {
       stripeRequestOptions = {
         stripeAccount: connectedAccountId,
       };
-      // On peut ajouter des frais de plateforme ici (application_fee_amount)
-      // Par exemple 1% ou un montant fixe. On met 0 par défaut pour les dons.
-      // paymentIntentOptions.application_fee_amount = 0;
     }
 
     const paymentIntent = await stripe.paymentIntents.create(
@@ -68,10 +65,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
     });
-  } catch (err: unknown) {
-    console.error("Erreur Stripe :", err);
-    const errorMessage =
-      err instanceof Error ? err.message : "Une erreur inconnue est survenue";
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  } catch (err: any) {
+    console.error("Erreur Stripe détaillée:", err);
+    return NextResponse.json({ 
+      error: err.message || "Erreur lors de la création du PaymentIntent",
+      code: err.code,
+      type: err.type
+    }, { status: 500 });
   }
 }

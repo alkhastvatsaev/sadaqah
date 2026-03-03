@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { headers } from "next/headers";
+import { db } from "@/lib/firebase"; // On utilisera le client pour l'instant si possible, ou firebase-admin
+import { doc, setDoc, updateDoc } from "firebase/firestore";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
   apiVersion: "2024-12-18.acacia" as any,
@@ -25,32 +27,43 @@ export async function POST(req: Request) {
   }
 
   // Handle the event
-  const eventType = event.type as string;
+  const eventType = event.type;
+  
   switch (eventType) {
-    case "account.updated":
-    case "v2.core.account[configuration.merchant].capability_status_updated":
-      const account = event.data.object as any;
-      console.log(`[Stripe Webhook] Account status update: ${account.id || (event.data as any).id}`);
-      break;
+    case "account.updated": {
+      const account = event.data.object as Stripe.Account;
+      const mosqueId = account.metadata?.mosqueId;
+      
+      console.log(`[Stripe Webhook] Account update for: ${account.id}, MosqueId: ${mosqueId}`);
 
-    case "payment_intent.succeeded":
+      if (mosqueId) {
+        // Sauvegarder/Mettre à jour dans Firestore
+        // On utilise l'ID de la mosquée pour le document
+        const mosqueRef = doc(db, "mosques", mosqueId);
+        
+        await setDoc(mosqueRef, {
+          stripeAccountId: account.id,
+          stripeEmail: account.email,
+          onboardingComplete: account.details_submitted,
+          chargesEnabled: account.charges_enabled,
+          payoutsEnabled: account.payouts_enabled,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        console.log(`[Firestore] Mosquée ${mosqueId} mise à jour avec le compte ${account.id}`);
+      }
+      break;
+    }
+
+    case "payment_intent.succeeded": {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       console.log(`[Stripe Webhook] Payment succeeded: ${paymentIntent.id} (Montant: ${paymentIntent.amount/100}€)`);
-      // Metadata help identification
+      
       if (paymentIntent.metadata.mosque_name) {
         console.log(`Donation reçue pour: ${paymentIntent.metadata.mosque_name}`);
       }
       break;
-
-    case "checkout.session.completed":
-      const session = event.data.object as Stripe.Checkout.Session;
-      console.log(`[Stripe Webhook] Checkout Session completed: ${session.id}`);
-      break;
-
-    case "invoice.payment_succeeded":
-      const invoice = event.data.object as Stripe.Invoice;
-      console.log(`[Stripe Webhook] Invoice payment succeeded: ${invoice.id}`);
-      break;
+    }
 
     default:
       console.log(`[Stripe Webhook] Unhandled event type: ${event.type}`);
