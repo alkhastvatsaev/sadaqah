@@ -12,6 +12,15 @@ registration requests are delivered with Resend.
 > production charity or rely on it for tax receipts. Some dashboard figures are
 > explicitly mocked and not financial records.
 
+![Sadaqah donation flow on desktop](docs/screenshots/donation-desktop.png)
+
+<details>
+<summary>Mobile view</summary>
+
+![Sadaqah donation flow on mobile](docs/screenshots/donation-mobile.png)
+
+</details>
+
 ## Why this project
 
 The project explores a real payment-platform problem rather than a CRUD-only
