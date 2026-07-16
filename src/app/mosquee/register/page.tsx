@@ -6,6 +6,7 @@ import Link from 'next/link';
 export default function MosqueRegister() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDone, setIsDone] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({
     mosqueName: '',
     city: '',
@@ -16,18 +17,19 @@ export default function MosqueRegister() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMessage('');
 
     try {
-      await fetch('/api/mosquee/register', {
+      const response = await fetch('/api/mosquee/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
+      if (!response.ok) throw new Error('La demande n’a pas pu être envoyée.');
       setIsDone(true);
     } catch (error) {
       console.error('Erreur:', error);
-      // On affiche quand même le succès pour la démo
-      setIsDone(true);
+      setErrorMessage('La demande n’a pas pu être envoyée. Veuillez réessayer.');
     } finally {
       setIsSubmitting(false);
     }
@@ -40,7 +42,7 @@ export default function MosqueRegister() {
           <div className="success-icon">✓</div>
           <h1 className="barakallah">Demande envoyée</h1>
           <p className="subtitle">
-            Barakallahu feekoum. Les informations ont été envoyées à <strong>alkhastvatsaev@gmail.com</strong>. Nous vous contacterons sous 24h.
+            Barakallahu feekoum. Votre demande a été transmise à l&apos;équipe. Nous vous contacterons après vérification.
           </p>
           <Link href="/" className="card-button" style={{ width: '100%', borderColor: 'var(--primary)', color: 'var(--primary)', textDecoration: 'none' }}>
             Retour à l&apos;accueil
@@ -58,9 +60,10 @@ export default function MosqueRegister() {
 
       <div className="glass-card">
         <h1 className="title">Ma Mosquée</h1>
-        <p className="subtitle">L&apos;inscription sera notifiée sur alkhastvatsaev@gmail.com pour validation.</p>
+        <p className="subtitle">Votre demande sera examinée avant l&apos;activation du portail.</p>
 
         <form onSubmit={handleSubmit}>
+          {errorMessage && <p role="alert" style={{ color: '#ef4444' }}>{errorMessage}</p>}
           <div className="form-group">
             <label className="form-label">Nom de la Mosquée / Association</label>
             <input 

@@ -1,78 +1,79 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import Stripe from "stripe";
+import { STRASBOURG_MOSQUES } from "../../../data/mosques";
+import {
+  getAppUrl,
+  noStoreJson,
+  requireAdmin,
+  signConnectAccount,
+} from "@/lib/server/security";
+import {
+  isPlainObject,
+  requiredString,
+  validEmail,
+} from "@/lib/server/validation";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2024-12-18.acacia" as any,
-});
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error("Stripe is not configured.");
+  return new Stripe(process.env.STRIPE_SECRET_KEY);
+}
 
 export async function POST(req: Request) {
-  let baseUrl = "";
-  let host: string | null = null;
+  const unauthorized = requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   try {
-    const { mosqueId, email, name, siret } = await req.json();
+    const body: unknown = await req.json();
+    if (!isPlainObject(body)) throw new Error("Request body must be an object.");
 
-    // Récupération sécurisée du host via next/headers
-    const headersList = await headers();
-    host = headersList.get("x-forwarded-host") || headersList.get("host");
-    
-    // On construit l'URL de base à partir du host actuel pour être sûr
-    baseUrl = host ? `https://${host}` : (process.env.NEXT_PUBLIC_BASE_URL || "");
-    
-    // Nettoyage final
-    baseUrl = baseUrl.replace(/\/$/, "");
-    if (baseUrl && !baseUrl.startsWith("http")) baseUrl = `https://${baseUrl}`;
+    const mosqueId = requiredString(String(body.mosqueId ?? ""), "mosqueId", 32);
+    const mosque = STRASBOURG_MOSQUES.find(
+      (item) => String(item.id) === mosqueId,
+    );
+    if (!mosque) throw new Error("Unknown mosque.");
 
-    console.log(`[Stripe] Tentative création compte. Host: ${host} | BaseURL: ${baseUrl}`);
-
-    if (!baseUrl) {
-      throw new Error("Impossible de déterminer l'URL de base du site.");
+    const email = validEmail(body.email);
+    const siret = requiredString(body.siret, "siret", 14);
+    if (!/^\d{14}$/.test(siret)) {
+      throw new Error("siret must contain exactly 14 digits.");
     }
+    const baseUrl = getAppUrl();
 
-    // 1. Créer le compte Stripe Express (Minimum strict)
-    const account = await stripe.accounts.create({
+    const account = await getStripe().accounts.create({
       type: "express",
       country: "FR",
-      email: email,
+      email,
       capabilities: {
         card_payments: { requested: true },
         transfers: { requested: true },
       },
       business_type: "non_profit",
       business_profile: {
-        name: name,
+        name: mosque.name,
       },
       metadata: {
-        mosqueId: mosqueId.toString(),
-        siret: siret,
+        mosqueId,
+        siret,
       },
     });
 
-    console.log(`[Stripe] Compte créé: ${account.id}`);
-
-    // 2. Générer le lien d'onboarding
-    const accountLink = await stripe.accountLinks.create({
+    const state = signConnectAccount(account.id);
+    const accountLink = await getStripe().accountLinks.create({
       account: account.id,
-      refresh_url: `${baseUrl}/api/stripe/refresh?account=${account.id}`,
+      refresh_url: `${baseUrl}/api/stripe/refresh?account=${account.id}&state=${state}`,
       return_url: `${baseUrl}/admin/mosquee?onboarding=success&accountId=${account.id}`,
       type: "account_onboarding",
     });
 
-    console.log(`[Stripe V1] Lien généré: ${accountLink.url}`);
-
-    return NextResponse.json({
+    return noStoreJson({
       url: accountLink.url,
       accountId: account.id,
     });
-  } catch (err: any) {
-    console.error("Erreur Stripe Connect V1:", err);
-    return NextResponse.json({ 
-      error: err.message,
-      debug: {
-        baseUrl: baseUrl,
-        env: process.env.NEXT_PUBLIC_BASE_URL || "missing",
-        host: host || "unknown",
-      }
-    }, { status: 500 });
+  } catch (error: unknown) {
+    console.error("Stripe Connect account creation failed:", error);
+    return NextResponse.json(
+      { error: "Unable to create the connected account." },
+      { status: 500 },
+    );
   }
 }

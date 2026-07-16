@@ -136,7 +136,7 @@ function WheelPicker({ options, selectedIndex, onChange }: { options: (number | 
 }
 
 // Internal component for the form inside Elements provider
-function CheckoutForm({ amount, finalAmount, mosqueName, onCancel }: { amount: number, finalAmount: number, mosqueName: string, onCancel: () => void }) {
+function CheckoutForm({ finalAmount, mosqueName, onCancel }: { finalAmount: number, mosqueName: string, onCancel: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -165,7 +165,7 @@ function CheckoutForm({ amount, finalAmount, mosqueName, onCancel }: { amount: n
     }
   };
 
-  const handleExpressConfirm = async (event: any) => {
+  const handleExpressConfirm = async () => {
     if (!stripe || !elements) return;
 
     // The event already contains the confirmation logic for ExpressCheckout
@@ -186,7 +186,7 @@ function CheckoutForm({ amount, finalAmount, mosqueName, onCancel }: { amount: n
     <form onSubmit={handleSubmit} className="payment-form">
       {/* Bouton Apple Pay / Google Pay explicite */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <ExpressCheckoutElement onConfirm={handleExpressConfirm as any} />
+        <ExpressCheckoutElement onConfirm={handleExpressConfirm} />
       </div>
 
       <div style={{ position: 'relative', margin: '2rem 0', textAlign: 'center' }}>
@@ -228,13 +228,11 @@ function CheckoutForm({ amount, finalAmount, mosqueName, onCancel }: { amount: n
 function ExpressCheckoutSection({ amount, mosqueName, coverFees, isValid }: { amount: number, mosqueName: string, coverFees: boolean, isValid: boolean }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [isProcessing, setIsProcessing] = useState(false);
 
   if (!isValid) return null;
 
-  const handleConfirm = async (event: any) => {
+  const handleConfirm = async () => {
     if (!stripe || !elements) return;
-    setIsProcessing(true);
 
     try {
       // 1. Create the Payment Intent on the fly
@@ -265,13 +263,10 @@ function ExpressCheckoutSection({ amount, mosqueName, coverFees, isValid }: { am
         // Here we show the Stripe-specific error (insufficient funds, card declined, etc.)
         alert(error.message);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Express Pay Error:', err);
-      // Detailed error for debugging
-      const errorDetail = err instanceof Error ? err.message : JSON.stringify(err);
+      const errorDetail = err instanceof Error ? err.message : 'Erreur inattendue';
       alert(`Erreur Paiement Express : ${errorDetail}`);
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -371,7 +366,7 @@ function HomeContent() {
       }
     }
     setSelectedMosque(nearest);
-  }, [userLocation]);
+  }, [userLocation, isLocked]);
 
   // Filter and sort mosques
   const filteredMosques = STRASBOURG_MOSQUES
@@ -410,9 +405,10 @@ function HomeContent() {
       } else {
         alert(`Erreur Stripe : ${data.error || 'Erreur inconnue'}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
-      alert(`Erreur Réseau : ${error.message}`);
+      const message = error instanceof Error ? error.message : 'Erreur inattendue';
+      alert(`Erreur Réseau : ${message}`);
     } finally {
       setIsLoadingSecret(false);
     }
@@ -518,7 +514,6 @@ function HomeContent() {
                 }}
               >
               <CheckoutForm 
-                amount={currentAmount} 
                 finalAmount={totalAmount}
                 mosqueName={mosqueName} 
                 onCancel={() => setClientSecret(null)} 

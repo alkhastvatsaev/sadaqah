@@ -1,37 +1,60 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { STRASBOURG_MOSQUES } from '../../data/mosques';
-import { db } from '@/lib/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+
+type MosqueStatus = {
+  stripeAccountId?: string;
+  onboardingComplete: boolean;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+};
 
 export default function AdminMosquePage() {
   const [loading, setLoading] = useState<string | null>(null);
-  const [mosqueStatuses, setMosqueStatuses] = useState<Record<string, any>>({});
+  const [adminKey, setAdminKey] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [mosqueStatuses, setMosqueStatuses] = useState<Record<string, MosqueStatus>>({});
 
-  // Écouter les changements dans Firestore en temps réel
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "mosques"), (snapshot) => {
-      const statuses: Record<string, any> = {};
-      snapshot.forEach(doc => {
-        statuses[doc.id] = doc.data();
-      });
-      setMosqueStatuses(statuses);
+  const loadStatuses = async () => {
+    setAuthError('');
+    const response = await fetch('/api/admin/mosques', {
+      headers: { 'x-admin-key': adminKey },
+      cache: 'no-store',
     });
-    return () => unsub();
-  }, []);
+    if (!response.ok) {
+      setAuthenticated(false);
+      setAuthError(response.status === 401 ? 'Clé administrateur invalide.' : 'Chargement impossible.');
+      return;
+    }
+    const data = await response.json();
+    const statuses: Record<string, MosqueStatus> = {};
+    for (const status of data.mosques as Array<MosqueStatus & { id: string }>) {
+      statuses[status.id] = status;
+    }
+    setMosqueStatuses(statuses);
+    setAuthenticated(true);
+  };
 
-  const handleOnboard = async (mosque: any) => {
+  const handleOnboard = async (mosque: (typeof STRASBOURG_MOSQUES)[number]) => {
+    const email = window.prompt('E-mail légal du représentant de la mosquée :');
+    if (!email) return;
+    const siret = mosque.siret ?? window.prompt('SIRET (14 chiffres) :');
+    if (!siret) return;
+
     setLoading(mosque.name);
     try {
       const res = await fetch('/api/stripe/create-connected-account', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-key': adminKey,
+        },
         body: JSON.stringify({
           mosqueId: mosque.id,
-          email: mosque.email || `contact@${mosque.slug}.fr`, // On génère un email si absent
-          name: mosque.name,
-          siret: mosque.siret || '00000000000000',
+          email,
+          siret,
         }),
       });
 
@@ -49,6 +72,33 @@ export default function AdminMosquePage() {
     }
   };
 
+  if (!authenticated) {
+    return (
+      <main className="main-container">
+        <div className="glass-card">
+          <h1 className="title">Administration</h1>
+          <p className="subtitle">Entrez la clé opérateur. Elle reste uniquement en mémoire dans cet onglet.</p>
+          <form onSubmit={(event) => { event.preventDefault(); void loadStatuses(); }}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="admin-key">Clé administrateur</label>
+              <input
+                id="admin-key"
+                type="password"
+                className="form-input"
+                autoComplete="off"
+                value={adminKey}
+                onChange={(event) => setAdminKey(event.target.value)}
+                required
+              />
+            </div>
+            {authError && <p role="alert" style={{ color: '#ef4444' }}>{authError}</p>}
+            <button className="donate-button" type="submit">Ouvrir</button>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto', color: 'white', fontFamily: 'Outfit, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -62,7 +112,6 @@ export default function AdminMosquePage() {
       <div style={{ display: 'grid', gap: '1rem' }}>
         {STRASBOURG_MOSQUES.map((m) => {
           const status = mosqueStatuses[m.id.toString()];
-          const isComplete = status?.onboardingComplete;
           const isChargesEnabled = status?.chargesEnabled;
 
           return (

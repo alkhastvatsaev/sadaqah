@@ -1,23 +1,26 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { STRASBOURG_MOSQUES } from '../../data/mosques';
+import { getAppUrl } from '@/lib/server/security';
+import { isPlainObject, requiredString, validAmount } from '@/lib/server/validation';
 
 export const dynamic = 'force-dynamic';
 
-// Initialisation paresseuse de Stripe
-const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiVersion: '2024-12-18.acacia' as any,
-});
+const getStripe = () => {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error('Stripe is not configured.');
+  return new Stripe(process.env.STRIPE_SECRET_KEY);
+};
 
 export async function POST(req: Request) {
   try {
-    const { amount, mosqueName } = await req.json();
+    const body: unknown = await req.json();
+    if (!isPlainObject(body)) throw new Error('Request body must be an object.');
+    const amount = validAmount(body.amount);
+    const mosqueName = requiredString(body.mosqueName, 'mosqueName', 120);
+    const mosque = STRASBOURG_MOSQUES.find((item) => item.name === mosqueName);
+    if (!mosque) throw new Error('Unknown mosque.');
 
-    if (!process.env.STRIPE_SECRET_KEY) {
-      throw new Error('La clé Stripe n\'est pas configurée dans les variables d\'environnement.');
-    }
-
-    const session = await (getStripe().checkout.sessions.create as any)({
+    const session = await getStripe().checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
             product_data: {
               name: `Don pour ${mosqueName || 'la mosquée'}`,
             },
-            unit_amount: Math.round(amount * 100),
+            unit_amount: amount,
           },
           quantity: 1,
         },
@@ -35,13 +38,17 @@ export async function POST(req: Request) {
       metadata: {
         mosque_name: mosqueName,
       },
-      success_url: `${req.headers.get('origin')}/?success=true`,
+      success_url: `${getAppUrl()}/?success=true`,
     });
     
     return NextResponse.json({ id: session.id, url: session.url });
   } catch (err: unknown) {
-    console.error('Stripe Error:', err);
-    const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    console.error('Checkout Session creation failed:', err);
+    const isInputError =
+      err instanceof Error && !err.message.includes('configured');
+    return NextResponse.json(
+      { error: isInputError ? err.message : 'Unable to initialize checkout.' },
+      { status: isInputError ? 400 : 500 },
+    );
   }
 }

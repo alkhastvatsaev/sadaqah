@@ -1,8 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // All browser/mobile SDK access is denied. Trusted server routes use the
+    // Firebase Admin SDK, whose service-account authorization is enforced by IAM.
     match /{document=**} {
-      allow read, write: if true; // Temporary open for setup, we should secure this later
+      allow read, write: if false;
     }
   }
 }

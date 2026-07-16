@@ -1,35 +1,38 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import {
+  getAppUrl,
+  signConnectAccount,
+  verifyConnectAccount,
+} from "@/lib/server/security";
+import { validStripeAccount } from "@/lib/server/validation";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2024-12-18.acacia" as any,
-});
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) throw new Error("Stripe is not configured.");
+  return new Stripe(process.env.STRIPE_SECRET_KEY);
+}
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const accountId = searchParams.get("account");
-
-  // Détection d'URL robuste
-  const host = req.headers.get('host');
-  let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (host ? `https://${host}` : "https://sadaqah-mosque-ruddy.vercel.app");
-  if (baseUrl && !baseUrl.startsWith('http')) baseUrl = `https://${baseUrl}`;
-  baseUrl = baseUrl.replace(/\/$/, "");
-
-  if (!accountId) {
-    return NextResponse.redirect(`${baseUrl}/admin/mosquee?error=missing_account`);
-  }
+  const baseUrl = getAppUrl();
 
   try {
-    const accountLink = await stripe.accountLinks.create({
+    const accountId = validStripeAccount(searchParams.get("account"));
+    if (!verifyConnectAccount(accountId, searchParams.get("state"))) {
+      return NextResponse.redirect(`${baseUrl}/admin/mosquee?error=invalid_link`);
+    }
+
+    const state = signConnectAccount(accountId);
+    const accountLink = await getStripe().accountLinks.create({
       account: accountId,
-      refresh_url: `${baseUrl}/api/stripe/refresh?account=${accountId}`,
+      refresh_url: `${baseUrl}/api/stripe/refresh?account=${accountId}&state=${state}`,
       return_url: `${baseUrl}/admin/mosquee?onboarding=success`,
       type: "account_onboarding",
     });
 
     return NextResponse.redirect(accountLink.url);
   } catch (error) {
-    console.error("Refresh Link Error:", error);
-    return NextResponse.redirect(`${baseUrl}/admin/mosquee?error=refresh_failed`);
+    console.error("Stripe Connect refresh failed:", error);
+    return NextResponse.redirect(`${baseUrl}/admin/mosquee?error=missing_account`);
   }
 }

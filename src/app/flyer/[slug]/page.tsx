@@ -139,7 +139,7 @@ export default function MosqueFlyer() {
           padding: '1rem',
           fontSize: '0.9rem'
         }}>
-          Retour à l'accueil
+          Retour à l&apos;accueil
         </Link>
       </div>
 
