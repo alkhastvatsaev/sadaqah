@@ -168,3 +168,7 @@ src/lib/server/          Server-only auth, Firebase Admin and validation
 firestore.rules          Deny-by-default browser access
 .github/workflows/       Continuous integration
 ```
+
+## Author
+
+Built by [Alkhast Vatsaev](https://alkhastvatsaev.dev) — junior Full Stack JavaScript/TypeScript developer ([portfolio](https://alkhastvatsaev.dev), [FR](https://alkhastvatsaev.dev/fr/developpeur-full-stack)).
